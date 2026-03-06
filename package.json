@@ -1,0 +1,14 @@
+{
+  "name": "soc-platform",
+  "private": true,
+  "scripts": {
+    "dev": "pnpm --parallel --filter web --filter api dev",
+    "dev:web": "pnpm --filter web dev",
+    "dev:api": "pnpm --filter api dev",
+    "build": "pnpm --filter shared build && pnpm --parallel --filter web --filter api build",
+    "db:push": "pnpm --filter api db:push",
+    "db:generate": "pnpm --filter api db:generate",
+    "db:seed": "pnpm --filter api db:seed",
+    "simulate": "pnpm --filter api simulate"
+  }
+}

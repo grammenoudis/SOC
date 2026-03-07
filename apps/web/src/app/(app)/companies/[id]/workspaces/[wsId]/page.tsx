@@ -1,11 +1,20 @@
 "use client";
 
-import { use } from "react";
+import { use, useEffect, useState } from "react";
 import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { ArrowLeft } from "lucide-react";
-import { mockCompanies, mockWorkspaces, statusStyle } from "@/lib/mock-data";
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
+
+interface WorkspaceDetail {
+  id: string;
+  name: string;
+  description: string | null;
+  autoResponseEnabled: boolean;
+  createdAt: string;
+  company: { id: string; name: string };
+}
 
 export default function WorkspacePage({
   params,
@@ -13,10 +22,25 @@ export default function WorkspacePage({
   params: Promise<{ id: string; wsId: string }>;
 }) {
   const { id, wsId } = use(params);
-  const company = mockCompanies.find((c) => c.id === id);
-  const workspace = mockWorkspaces.find((w) => w.id === wsId);
+  const [workspace, setWorkspace] = useState<WorkspaceDetail | null>(null);
+  const [loading, setLoading] = useState(true);
 
-  if (!company || !workspace) {
+  useEffect(() => {
+    fetch(`${API_URL}/companies/${id}/workspaces/${wsId}`, { credentials: "include" })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((json) => json && setWorkspace(json.data))
+      .finally(() => setLoading(false));
+  }, [id, wsId]);
+
+  if (loading) {
+    return (
+      <div className="p-6 max-w-6xl mx-auto">
+        <p className="text-sm text-muted-foreground">Loading...</p>
+      </div>
+    );
+  }
+
+  if (!workspace) {
     return (
       <div className="p-6 max-w-6xl mx-auto">
         <p className="text-sm text-muted-foreground">Workspace not found</p>
@@ -34,27 +58,22 @@ export default function WorkspacePage({
           <ArrowLeft className="size-4" />
         </Link>
         <div>
-          <p className="text-xs text-muted-foreground">{company.name}</p>
+          <p className="text-xs text-muted-foreground">{workspace.company.name}</p>
           <h1 className="text-lg font-semibold">{workspace.name}</h1>
         </div>
-        <Badge variant="outline" className={`ml-auto ${statusStyle[workspace.status]}`}>
-          {workspace.status}
-        </Badge>
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <Card>
           <CardContent className="p-4">
             <p className="text-xs text-muted-foreground">Logs Today</p>
-            <p className="text-2xl font-semibold font-mono mt-1">
-              {workspace.logsToday.toLocaleString()}
-            </p>
+            <p className="text-2xl font-semibold font-mono mt-1">0</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-4">
             <p className="text-xs text-muted-foreground">Open Alerts</p>
-            <p className="text-2xl font-semibold font-mono mt-1">{workspace.alerts}</p>
+            <p className="text-2xl font-semibold font-mono mt-1">0</p>
           </CardContent>
         </Card>
         <Card>
@@ -67,16 +86,16 @@ export default function WorkspacePage({
         </Card>
         <Card>
           <CardContent className="p-4">
-            <p className="text-xs text-muted-foreground">Status</p>
-            <p className="text-2xl font-semibold font-mono mt-1 capitalize">
-              {workspace.status}
+            <p className="text-xs text-muted-foreground">Description</p>
+            <p className="text-sm font-medium mt-1">
+              {workspace.description || "No description"}
             </p>
           </CardContent>
         </Card>
       </div>
 
       <div className="text-sm text-muted-foreground">
-        Log viewer and alerts.
+        Log viewer and alerts coming soon.
       </div>
     </div>
   );

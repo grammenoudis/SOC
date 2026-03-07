@@ -21,6 +21,7 @@ model user {
 
   sessions      session[]
   accounts      account[]
+  favorites     FavoriteCompany[]
 }
 
 model session {
@@ -73,8 +74,21 @@ model Company {
   updatedAt DateTime @updatedAt
 
   workspaces Workspace[]
+  favoritedBy FavoriteCompany[]
 
   @@map("companies")
+}
+
+model FavoriteCompany {
+  userId    String
+  companyId String
+  createdAt DateTime @default(now())
+
+  user    user    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@id([userId, companyId])
+  @@map("favorite_companies")
 }
 
 model Workspace {

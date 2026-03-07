@@ -15,22 +15,47 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Plus } from "lucide-react";
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
+
 interface CreateWorkspaceDialogProps {
   companyId: string;
+  onCreated: () => void;
 }
 
-export function CreateWorkspaceDialog({ companyId }: CreateWorkspaceDialogProps) {
+export function CreateWorkspaceDialog({ companyId, onCreated }: CreateWorkspaceDialogProps) {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // TODO: API call to create workspace
-    console.log("Create workspace:", { companyId, name, description });
-    setName("");
-    setDescription("");
-    setOpen(false);
+    setError("");
+    setLoading(true);
+
+    try {
+      const res = await fetch(`${API_URL}/companies/${companyId}/workspaces`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ name, description }),
+      });
+
+      if (!res.ok) {
+        const json = await res.json();
+        throw new Error(json.message || "Failed to create workspace");
+      }
+
+      setName("");
+      setDescription("");
+      setOpen(false);
+      onCreated();
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -51,6 +76,11 @@ export function CreateWorkspaceDialog({ companyId }: CreateWorkspaceDialogProps)
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
+          {error && (
+            <p className="text-xs text-destructive bg-destructive/10 rounded px-3 py-2">
+              {error}
+            </p>
+          )}
           <div className="space-y-2">
             <Label htmlFor="ws-name">Workspace Name</Label>
             <Input
@@ -71,8 +101,8 @@ export function CreateWorkspaceDialog({ companyId }: CreateWorkspaceDialogProps)
             />
           </div>
           <DialogFooter>
-            <Button type="submit" size="sm" disabled={!name.trim()}>
-              Create
+            <Button type="submit" size="sm" disabled={loading || !name.trim()}>
+              {loading ? "Creating..." : "Create"}
             </Button>
           </DialogFooter>
         </form>

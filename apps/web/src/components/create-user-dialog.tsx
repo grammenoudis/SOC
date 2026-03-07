@@ -13,7 +13,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Plus } from "lucide-react";
+import { Plus, Eye, EyeOff, RefreshCw } from "lucide-react";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
 
@@ -27,8 +27,17 @@ export function CreateUserDialog({ onCreated }: CreateUserDialogProps) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [role, setRole] = useState("analyst");
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+
+  const generatePassword = () => {
+    const chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%&*";
+    const arr = new Uint32Array(16);
+    crypto.getRandomValues(arr);
+    setPassword(Array.from(arr, (v) => chars[v % chars.length]).join(""));
+    setShowPassword(true);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -107,15 +116,36 @@ export function CreateUserDialog({ onCreated }: CreateUserDialogProps) {
           </div>
           <div className="space-y-2">
             <Label htmlFor="user-password">Password</Label>
-            <Input
-              id="user-password"
-              type="password"
-              placeholder="Minimum 8 characters"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              minLength={8}
-            />
+            <div className="flex gap-1.5">
+              <div className="relative flex-1">
+                <Input
+                  id="user-password"
+                  type={showPassword ? "text" : "password"}
+                  placeholder="Minimum 8 characters"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  minLength={8}
+                  className="pr-8"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  {showPassword ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
+                </button>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                onClick={generatePassword}
+                title="Generate random password"
+              >
+                <RefreshCw className="size-3.5" />
+              </Button>
+            </div>
           </div>
           <div className="space-y-2">
             <Label htmlFor="user-role">Role</Label>

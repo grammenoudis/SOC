@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import Link from "next/link";
 import {
   Card,
@@ -8,7 +8,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import {
   ChartContainer,
@@ -19,8 +18,17 @@ import {
 import { Bar, BarChart, XAxis, Area, AreaChart } from "recharts";
 import { Star, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { mockCompanies, statusStyle, statusPriority } from "@/lib/mock-data";
 import { CreateCompanyDialog } from "@/components/create-company-dialog";
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
+
+interface Company {
+  id: string;
+  name: string;
+  contact: string | null;
+  workspaces: number;
+  createdAt: string;
+}
 
 const alertsData = [
   { day: "Mon", critical: 3, warning: 8, info: 12 },
@@ -57,37 +65,66 @@ const logVolumeConfig: ChartConfig = {
   logs: { label: "Logs", color: "oklch(0.72 0.10 195)" },
 };
 
-const stats = [
-  { label: "Companies", value: "6" },
-  { label: "Workspaces", value: "13" },
-  { label: "Open Alerts", value: "22" },
-  { label: "Logs (24h)", value: "14.2k" },
-];
-
 export default function Dashboard() {
   const [search, setSearch] = useState("");
-  const [favorites, setFavorites] = useState<Set<string>>(new Set(["3", "4"]));
+  const [companies, setCompanies] = useState<Company[]>([]);
+  const [favorites, setFavorites] = useState<Set<string>>(new Set());
+  const [loading, setLoading] = useState(true);
 
-  const toggleFavorite = (id: string) => {
+  const fetchCompanies = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_URL}/companies`, { credentials: "include" });
+      if (res.ok) {
+        const json = await res.json();
+        setCompanies(json.data);
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchCompanies();
+    fetch(`${API_URL}/favorites`, { credentials: "include" })
+      .then((res) => res.ok ? res.json() : { data: [] })
+      .then((json) => setFavorites(new Set(json.data)));
+  }, [fetchCompanies]);
+
+  const toggleFavorite = useCallback((id: string) => {
     setFavorites((prev) => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
+      const isFav = next.has(id);
+      if (isFav) {
+        next.delete(id);
+        fetch(`${API_URL}/favorites/${id}`, { method: "DELETE", credentials: "include" });
+      } else {
+        next.add(id);
+        fetch(`${API_URL}/favorites/${id}`, { method: "POST", credentials: "include" });
+      }
       return next;
     });
-  };
+  }, []);
+
+  const totalWorkspaces = companies.reduce((sum, c) => sum + c.workspaces, 0);
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
-    return mockCompanies
+    return companies
       .filter((c) => c.name.toLowerCase().includes(q))
       .sort((a, b) => {
         const favA = favorites.has(a.id) ? 0 : 1;
         const favB = favorites.has(b.id) ? 0 : 1;
         if (favA !== favB) return favA - favB;
-        return statusPriority[a.status] - statusPriority[b.status];
+        return 0;
       });
-  }, [search, favorites]);
+  }, [search, favorites, companies]);
+
+  const stats = [
+    { label: "Companies", value: String(companies.length) },
+    { label: "Workspaces", value: String(totalWorkspaces) },
+    { label: "Open Alerts", value: "0" },
+    { label: "Logs (24h)", value: "0" },
+  ];
 
   return (
     <div className="p-6 space-y-6 max-w-6xl mx-auto">
@@ -146,7 +183,7 @@ export default function Dashboard() {
       <div className="space-y-3">
         <div className="flex items-center gap-3">
           <h2 className="text-sm font-medium text-muted-foreground">Companies</h2>
-          <CreateCompanyDialog />
+          <CreateCompanyDialog onCreated={fetchCompanies} />
           <div className="relative ml-auto w-64">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
             <Input
@@ -158,54 +195,50 @@ export default function Dashboard() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-          {filtered.map((c) => (
-            <Link key={c.id} href={`/companies/${c.id}`}>
-              <Card className="hover:bg-secondary/30 transition-colors cursor-pointer group h-full">
-                <CardHeader className="p-4 pb-2">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          toggleFavorite(c.id);
-                        }}
-                        className="text-muted-foreground hover:text-amber-400 transition-colors"
-                      >
-                        <Star
-                          className={cn(
-                            "size-3.5",
-                            favorites.has(c.id) && "fill-amber-400 text-amber-400"
-                          )}
-                        />
-                      </button>
-                      <CardTitle className="text-sm">{c.name}</CardTitle>
+        {loading ? (
+          <p className="text-sm text-muted-foreground py-8 text-center">Loading...</p>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            {filtered.map((c) => (
+              <Link key={c.id} href={`/companies/${c.id}`}>
+                <Card className="hover:bg-secondary/30 transition-colors cursor-pointer group h-full">
+                  <CardHeader className="p-4 pb-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            toggleFavorite(c.id);
+                          }}
+                          className="text-muted-foreground hover:text-amber-400 transition-colors"
+                        >
+                          <Star
+                            className={cn(
+                              "size-3.5",
+                              favorites.has(c.id) && "fill-amber-400 text-amber-400"
+                            )}
+                          />
+                        </button>
+                        <CardTitle className="text-sm">{c.name}</CardTitle>
+                      </div>
                     </div>
-                    <Badge variant="outline" className={statusStyle[c.status]}>
-                      {c.status}
-                    </Badge>
-                  </div>
-                </CardHeader>
-                <CardContent className="px-4 pb-4 pt-0">
-                  <p className="text-xs text-muted-foreground">
-                    {c.workspaces} workspaces
-                    {c.alerts > 0 && (
-                      <span className="text-amber-400 ml-3">
-                        {c.alerts} alerts
-                      </span>
-                    )}
-                  </p>
-                </CardContent>
-              </Card>
-            </Link>
-          ))}
-          {filtered.length === 0 && (
-            <p className="text-sm text-muted-foreground col-span-full py-8 text-center">
-              No companies found
-            </p>
-          )}
-        </div>
+                  </CardHeader>
+                  <CardContent className="px-4 pb-4 pt-0">
+                    <p className="text-xs text-muted-foreground">
+                      {c.workspaces} workspaces
+                    </p>
+                  </CardContent>
+                </Card>
+              </Link>
+            ))}
+            {filtered.length === 0 && (
+              <p className="text-sm text-muted-foreground col-span-full py-8 text-center">
+                No companies found
+              </p>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

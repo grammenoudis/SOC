@@ -82,6 +82,15 @@
   --sidebar-ring: oklch(0.72 0.10 195);
 }
 
+@keyframes row-highlight {
+  0% { background-color: oklch(0.72 0.10 195 / 25%); }
+  100% { background-color: transparent; }
+}
+
+.animate-row-highlight {
+  animation: row-highlight 1.5s ease-out;
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;

@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useEffect, useState, useCallback } from "react";
+import { use, useEffect, useState, useCallback, useRef } from "react";
 import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";
 import { ArrowLeft, FileText } from "lucide-react";
@@ -32,10 +32,16 @@ export default function WorkspacePage({
     fetchStats();
   }, [id, wsId, fetchStats]);
 
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const debouncedFetchStats = useCallback(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(fetchStats, 300);
+  }, [fetchStats]);
+
   useWorkspaceSocket(wsId, {
-    onLogsIngested: () => fetchStats(),
-    onLogDeleted: () => fetchStats(),
-    onLogsCleared: () => fetchStats(),
+    onLogsIngested: debouncedFetchStats,
+    onLogDeleted: debouncedFetchStats,
+    onLogsCleared: debouncedFetchStats,
   });
 
   if (loading) {

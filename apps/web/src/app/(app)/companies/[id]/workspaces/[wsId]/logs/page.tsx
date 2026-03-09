@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useEffect, useState, useMemo, useCallback } from "react";
+import { use, useEffect, useState, useMemo, useCallback, useRef } from "react";
 import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -99,6 +99,8 @@ export default function LogsPage({
   const [meta, setMeta] = useState<PaginationMeta | null>(null);
   const [stats, setStats] = useState<LogStatsDto | null>(null);
   const [loading, setLoading] = useState(true);
+  const [newLogIds, setNewLogIds] = useState<Set<string>>(new Set());
+  const prevLogIdsRef = useRef<Set<string>>(new Set());
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
   const [severity, setSeverity] = useState("");
@@ -120,8 +122,8 @@ export default function LogsPage({
     refreshStats();
   }, [id, wsId, refreshStats]);
 
-  const fetchLogs = useCallback(async () => {
-    setLoading(true);
+  const fetchLogs = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
     try {
       const params: Record<string, string> = {
         page: String(page),
@@ -132,12 +134,27 @@ export default function LogsPage({
       if (eventType) params.eventType = eventType;
       if (action) params.action = action;
       const { data: json } = await api.get(`/logs/workspace/${wsId}`, { params });
-      setLogs(json.data);
+      const incoming: LogDto[] = json.data;
+
+      if (silent && prevLogIdsRef.current.size > 0) {
+        const added = new Set(
+          incoming
+            .filter((l) => !prevLogIdsRef.current.has(l.id))
+            .map((l) => l.id)
+        );
+        if (added.size > 0) {
+          setNewLogIds(added);
+          setTimeout(() => setNewLogIds(new Set()), 1500);
+        }
+      }
+
+      prevLogIdsRef.current = new Set(incoming.map((l) => l.id));
+      setLogs(incoming);
       setMeta(json.meta);
     } catch {
       // ignore
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [wsId, page, search, severity, eventType, action]);
 
@@ -145,11 +162,20 @@ export default function LogsPage({
     fetchLogs();
   }, [fetchLogs]);
 
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const debouncedRefresh = useCallback(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      refreshStats();
+      fetchLogs(true);
+    }, 300);
+  }, [refreshStats, fetchLogs]);
+
   useWorkspaceSocket(wsId, {
-    onLogsIngested: () => { refreshStats(); fetchLogs(); },
-    onLogUpdated: () => { refreshStats(); fetchLogs(); },
-    onLogDeleted: () => { refreshStats(); fetchLogs(); },
-    onLogsCleared: () => { refreshStats(); fetchLogs(); },
+    onLogsIngested: debouncedRefresh,
+    onLogUpdated: debouncedRefresh,
+    onLogDeleted: debouncedRefresh,
+    onLogsCleared: debouncedRefresh,
   });
 
   const displayedLogs = useMemo(() => {
@@ -421,7 +447,7 @@ export default function LogsPage({
                 displayedLogs.map((log) => (
                   <tr
                     key={log.id}
-                    className="border-b border-border/50 hover:bg-secondary/30 transition-colors"
+                    className={`border-b border-border/50 hover:bg-secondary/30 transition-colors ${newLogIds.has(log.id) ? "animate-row-highlight" : ""}`}
                   >
                     <td className="p-3 font-mono whitespace-nowrap">
                       {formatTs(log.timestamp)}

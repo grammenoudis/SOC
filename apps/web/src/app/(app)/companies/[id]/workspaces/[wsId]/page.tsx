@@ -3,7 +3,7 @@
 import { use, useEffect, useState } from "react";
 import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, FileText } from "lucide-react";
 import api from "@/lib/api";
 
 interface WorkspaceDetail {
@@ -93,8 +93,14 @@ export default function WorkspacePage({
         </Card>
       </div>
 
-      <div className="text-sm text-muted-foreground">
-        Log viewer and alerts coming soon.
+      <div>
+        <Link
+          href={`/companies/${id}/workspaces/${wsId}/logs`}
+          className="inline-flex items-center gap-2 px-3 py-2 rounded-md border border-border text-sm hover:bg-secondary/30 transition-colors"
+        >
+          <FileText className="size-3.5" />
+          Open Log Explorer
+        </Link>
       </div>
     </div>
   );

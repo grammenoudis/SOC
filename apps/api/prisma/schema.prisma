@@ -101,6 +101,35 @@ model Workspace {
   updatedAt           DateTime @updatedAt
 
   company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  logs    Log[]
 
   @@map("workspaces")
+}
+
+model Log {
+  id             String   @id @default(cuid())
+  workspaceId    String
+  timestamp      Int      // Unix epoch
+  severity       String   // unknown | low | medium | high | critical
+  vendor         String   // e.g. "paloalto"
+  eventType      String   // e.g. "traffic", "threat", "system"
+  action         String?  // e.g. "allow", "deny", "drop"
+  application    String?  // e.g. "soap", "ssl", "web-browsing"
+  protocol       String?  // e.g. "tcp", "udp"
+  policy         String?  // e.g. "Allow Tap Traffic"
+  sourceIp       String?
+  sourcePort     Int?
+  destinationIp  String?
+  destinationPort Int?
+  rawLog         String   // Full raw log text
+  createdAt      DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, timestamp])
+  @@index([workspaceId, severity])
+  @@index([workspaceId, vendor])
+  @@index([sourceIp])
+  @@index([destinationIp])
+  @@map("logs")
 }

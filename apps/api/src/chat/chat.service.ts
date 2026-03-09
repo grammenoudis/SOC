@@ -1,6 +1,6 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, HttpException, HttpStatus } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import type { ChatRequestDto, ChatResponseDto, MessageDto } from '@soc/shared';
+import type { ChatRequestDto, ChatResponseDto, MessageDto, ConversationDto, ConversationDetailDto } from '@soc/shared';
 
 const CHUTES_BASE_URL = process.env.CHUTES_BASE_URL || 'https://llm.chutes.ai/v1';
 const CHUTES_MODEL = process.env.CHUTES_MODEL || 'Qwen/Qwen2.5-72B-Instruct';
@@ -46,20 +46,168 @@ export class ChatService {
 
   constructor(private readonly prisma: PrismaService) {}
 
-  async chat(dto: ChatRequestDto): Promise<ChatResponseDto> {
-    const { message, companyId, workspaceId, history } = dto;
+  // ── Conversation CRUD ──────────────────────────────────────
 
-    const queryJson = await this.generateQuery(message, companyId, workspaceId, history);
-    const logs = await this.executePrismaQuery(queryJson, companyId, workspaceId);
+  async listConversations(userId: string): Promise<ConversationDto[]> {
+    const convos = await this.prisma.conversation.findMany({
+      where: { userId },
+      orderBy: { updatedAt: 'desc' },
+    });
+    return convos.map((c) => ({
+      id: c.id,
+      title: c.title,
+      companyId: c.companyId,
+      workspaceId: c.workspaceId,
+      createdAt: c.createdAt.toISOString(),
+      updatedAt: c.updatedAt.toISOString(),
+    }));
+  }
+
+  async getConversation(userId: string, conversationId: string): Promise<ConversationDetailDto> {
+    const convo = await this.prisma.conversation.findFirst({
+      where: { id: conversationId, userId },
+      include: { messages: { orderBy: { createdAt: 'asc' } } },
+    });
+    if (!convo) throw new HttpException('Conversation not found', HttpStatus.NOT_FOUND);
+
+    return {
+      id: convo.id,
+      title: convo.title,
+      companyId: convo.companyId,
+      workspaceId: convo.workspaceId,
+      createdAt: convo.createdAt.toISOString(),
+      updatedAt: convo.updatedAt.toISOString(),
+      messages: convo.messages.map((m) => ({
+        id: m.id,
+        role: m.role as 'user' | 'assistant',
+        content: m.content,
+        logsUsed: m.logsUsed,
+        createdAt: m.createdAt.toISOString(),
+      })),
+    };
+  }
+
+  async deleteConversation(userId: string, conversationId: string): Promise<void> {
+    const convo = await this.prisma.conversation.findFirst({
+      where: { id: conversationId, userId },
+    });
+    if (!convo) throw new HttpException('Conversation not found', HttpStatus.NOT_FOUND);
+    await this.prisma.conversation.delete({ where: { id: conversationId } });
+  }
+
+  // ── Send message (the main flow) ──────────────────────────
+
+  async sendMessage(userId: string, dto: ChatRequestDto): Promise<ChatResponseDto> {
+    const { message, conversationId, companyId, workspaceId } = dto;
+
+    // get or create conversation
+    let convo: any;
+    if (conversationId) {
+      convo = await this.prisma.conversation.findFirst({
+        where: { id: conversationId, userId },
+        include: { messages: { orderBy: { createdAt: 'asc' } } },
+      });
+      if (!convo) throw new HttpException('Conversation not found', HttpStatus.NOT_FOUND);
+    } else {
+      convo = await this.prisma.conversation.create({
+        data: {
+          userId,
+          companyId: companyId || null,
+          workspaceId: workspaceId || null,
+        },
+        include: { messages: true },
+      });
+    }
+
+    // save user message
+    const userMsg = await this.prisma.message.create({
+      data: {
+        conversationId: convo.id,
+        role: 'user',
+        content: message,
+      },
+    });
+
+    // build history from DB
+    const history: MessageDto[] = convo.messages.map((m: any) => ({
+      id: m.id,
+      role: m.role,
+      content: m.content,
+    }));
+
+    const effectiveCompanyId = companyId || convo.companyId;
+    const effectiveWorkspaceId = workspaceId || convo.workspaceId;
+
+    // call 1: generate query
+    const queryJson = await this.generateQuery(message, effectiveCompanyId, effectiveWorkspaceId, history);
+
+    // execute query
+    const logs = await this.executePrismaQuery(queryJson, effectiveCompanyId, effectiveWorkspaceId);
+
+    // call 2: generate answer
     const reply = await this.generateAnswer(message, logs, history);
 
-    return { reply, logsUsed: logs.length };
+    // save assistant message
+    const assistantMsg = await this.prisma.message.create({
+      data: {
+        conversationId: convo.id,
+        role: 'assistant',
+        content: reply,
+        logsUsed: logs.length,
+      },
+    });
+
+    // auto-title on first message
+    if (convo.messages.length === 0) {
+      this.generateTitle(message, convo.id).catch(() => {});
+    }
+
+    // bump updatedAt
+    await this.prisma.conversation.update({
+      where: { id: convo.id },
+      data: { updatedAt: new Date() },
+    });
+
+    return {
+      conversationId: convo.id,
+      message: {
+        id: assistantMsg.id,
+        role: 'assistant',
+        content: reply,
+        logsUsed: logs.length,
+        createdAt: assistantMsg.createdAt.toISOString(),
+      },
+      logsUsed: logs.length,
+    };
   }
+
+  // ── Title generation (fire and forget) ────────────────────
+
+  private async generateTitle(firstMessage: string, conversationId: string) {
+    try {
+      const raw = await this.callLlm([
+        {
+          role: 'system',
+          content: 'Generate a short title (max 6 words) for a SOC chat conversation based on the user\'s first message. Return ONLY the title text, nothing else. No quotes.',
+        },
+        { role: 'user', content: firstMessage },
+      ]);
+      const title = raw.trim().replace(/^["']|["']$/g, '').slice(0, 80);
+      await this.prisma.conversation.update({
+        where: { id: conversationId },
+        data: { title },
+      });
+    } catch (err) {
+      this.logger.warn(`Failed to generate title: ${err}`);
+    }
+  }
+
+  // ── LLM query generation ──────────────────────────────────
 
   private async generateQuery(
     message: string,
-    companyId?: string,
-    workspaceId?: string,
+    companyId?: string | null,
+    workspaceId?: string | null,
     history?: MessageDto[],
   ): Promise<any> {
     const contextParts: string[] = [];
@@ -92,8 +240,7 @@ RULES:
     ];
 
     if (history?.length) {
-      const recent = history.slice(-6);
-      for (const msg of recent) {
+      for (const msg of history.slice(-6)) {
         messages.push({ role: msg.role, content: msg.content });
       }
     }
@@ -114,7 +261,9 @@ RULES:
     }
   }
 
-  private async executePrismaQuery(queryJson: any, companyId?: string, workspaceId?: string) {
+  // ── Query execution ───────────────────────────────────────
+
+  private async executePrismaQuery(queryJson: any, companyId?: string | null, workspaceId?: string | null) {
     const { where = {}, orderBy = { timestamp: 'desc' }, take } = queryJson;
 
     if (workspaceId) {
@@ -124,7 +273,6 @@ RULES:
     }
 
     const queryOptions: any = { where, orderBy };
-    // only limit if the LLM explicitly set a take
     if (take !== undefined && take !== null) {
       queryOptions.take = Math.max(take, 1);
     }
@@ -144,6 +292,8 @@ RULES:
       });
     }
   }
+
+  // ── Log context builder ───────────────────────────────────
 
   private buildLogContext(logs: any[]): string {
     const total = logs.length;
@@ -187,7 +337,6 @@ RULES:
       `Top destination IPs: ${topN(dstIpCounts, 15)}`,
     ].filter(Boolean);
 
-    // include a sample of actual log rows (first 30 + last 10 for variety)
     const sampleLogs = total <= 50
       ? logs
       : [...logs.slice(0, 30), ...logs.slice(-10)];
@@ -210,6 +359,8 @@ RULES:
     return parts.join('\n');
   }
 
+  // ── Answer generation ─────────────────────────────────────
+
   private async generateAnswer(message: string, logs: any[], history?: MessageDto[]): Promise<string> {
     const logContext = this.buildLogContext(logs);
 
@@ -231,8 +382,7 @@ ${logs.length === 0 ? '- No logs matched the query. Let the user know and sugges
     ];
 
     if (history?.length) {
-      const recent = history.slice(-6);
-      for (const msg of recent) {
+      for (const msg of history.slice(-6)) {
         messages.push({ role: msg.role, content: msg.content });
       }
     }
@@ -245,6 +395,8 @@ ${logs.length === 0 ? '- No logs matched the query. Let the user know and sugges
 
     return this.callLlm(messages);
   }
+
+  // ── LLM caller ────────────────────────────────────────────
 
   private async callLlm(messages: LlmMessage[]): Promise<string> {
     const res = await fetch(`${CHUTES_BASE_URL}/chat/completions`, {

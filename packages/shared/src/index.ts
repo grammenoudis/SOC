@@ -198,16 +198,32 @@ export interface MessageDto {
   id: string;
   role: 'user' | 'assistant';
   content: string;
+  logsUsed?: number | null;
+  createdAt?: string;
+}
+
+export interface ConversationDto {
+  id: string;
+  title: string;
+  companyId: string | null;
+  workspaceId: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ConversationDetailDto extends ConversationDto {
+  messages: MessageDto[];
 }
 
 export interface ChatRequestDto {
   message: string;
+  conversationId?: string;
   companyId?: string;
   workspaceId?: string;
-  history?: MessageDto[];
 }
 
 export interface ChatResponseDto {
-  reply: string;
+  conversationId: string;
+  message: MessageDto;
   logsUsed: number;
 }

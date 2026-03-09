@@ -5,6 +5,7 @@ import { AdminGuard } from '../common/guards/admin.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { hashPassword } from 'better-auth/crypto';
 import { auth } from '../auth/auth';
+import type { CreateUserDto, UpdateUserDto } from '@soc/shared';
 
 @Controller('users')
 @UseGuards(AuthGuard, AdminGuard)
@@ -27,7 +28,7 @@ export class UsersController {
   }
 
   @Post()
-  async createUser(@Body() body: { name: string; email: string; password: string; role: string }) {
+  async createUser(@Body() body: CreateUserDto) {
     const { name, email, password, role } = body;
     if (!name || !email || !password) {
       throw new HttpException('Missing required fields', HttpStatus.BAD_REQUEST);
@@ -62,7 +63,7 @@ export class UsersController {
   @Patch(':id')
   async updateUser(
     @Param('id') id: string,
-    @Body() body: { name?: string; email?: string; role?: string; password?: string },
+    @Body() body: UpdateUserDto,
   ) {
     const existing = await this.prisma.user.findUnique({ where: { id } });
     if (!existing) {

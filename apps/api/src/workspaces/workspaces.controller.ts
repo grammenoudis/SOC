@@ -2,6 +2,7 @@ import { Controller, Get, Post, Body, Param, UseGuards, HttpException, HttpStatu
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthGuard } from '../common/guards/auth.guard';
 import { AdminGuard } from '../common/guards/admin.guard';
+import type { CreateWorkspaceDto } from '@soc/shared';
 
 @Controller('companies/:companyId/workspaces')
 @UseGuards(AuthGuard)
@@ -41,7 +42,7 @@ export class WorkspacesController {
   @UseGuards(AdminGuard)
   async create(
     @Param('companyId') companyId: string,
-    @Body() body: { name: string; description?: string },
+    @Body() body: CreateWorkspaceDto,
   ) {
     const company = await this.prisma.company.findUnique({ where: { id: companyId } });
     if (!company) {

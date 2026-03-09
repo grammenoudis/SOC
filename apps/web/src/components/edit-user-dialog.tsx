@@ -14,16 +14,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Eye, EyeOff, RefreshCw } from "lucide-react";
 import api from "@/lib/api";
-
-interface User {
-  id: string;
-  name: string;
-  email: string;
-  role: string;
-}
+import type { UserDto } from "@soc/shared";
 
 interface EditUserDialogProps {
-  user: User | null;
+  user: UserDto | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSaved: () => void;

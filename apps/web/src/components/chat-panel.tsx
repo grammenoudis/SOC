@@ -7,14 +7,9 @@ import { Button } from "@/components/ui/button";
 import { X, Send } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { mockCompanies, mockWorkspaces } from "@/lib/mock-data";
+import type { MessageDto } from "@soc/shared";
 
-interface Message {
-  id: string;
-  role: "user" | "assistant";
-  content: string;
-}
-
-const mockMessages: Message[] = [
+const mockMessages: MessageDto[] = [
   {
     id: "1",
     role: "user",
@@ -42,7 +37,7 @@ const mockMessages: Message[] = [
 function useContextLine(): string {
   const pathname = usePathname();
 
-  // /companies/[id]/workspaces/[wsId] — single workspace
+  // workspace page
   const wsMatch = pathname.match(/^\/companies\/([^/]+)\/workspaces\/([^/]+)/);
   if (wsMatch) {
     const company = mockCompanies.find((c) => c.id === wsMatch[1]);
@@ -52,7 +47,7 @@ function useContextLine(): string {
     }
   }
 
-  // /companies/[id] — company with workspaces
+  // company page
   const companyMatch = pathname.match(/^\/companies\/([^/]+)/);
   if (companyMatch) {
     const company = mockCompanies.find((c) => c.id === companyMatch[1]);
@@ -66,13 +61,12 @@ function useContextLine(): string {
     }
   }
 
-  // /alerts
   if (pathname === "/alerts") {
     const totalAlerts = mockCompanies.reduce((sum, c) => sum + c.alerts, 0);
     return `Monitoring ${totalAlerts} alerts across ${mockCompanies.length} companies`;
   }
 
-  // / dashboard
+  // fallback to dashboard summary
   const totalWorkspaces = mockWorkspaces.length;
   const totalLogs = mockWorkspaces.reduce((sum, w) => sum + w.logsToday, 0);
   return `Monitoring ${mockCompanies.length} companies · ${totalWorkspaces} workspaces · ${totalLogs.toLocaleString()} logs`;
@@ -116,7 +110,7 @@ interface ChatPanelProps {
 }
 
 export function ChatPanel({ open, onClose, width, onResizeStart }: ChatPanelProps) {
-  const [messages, setMessages] = useState<Message[]>(mockMessages);
+  const [messages, setMessages] = useState<MessageDto[]>(mockMessages);
   const [input, setInput] = useState("");
   const [isThinking, setIsThinking] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -129,7 +123,7 @@ export function ChatPanel({ open, onClose, width, onResizeStart }: ChatPanelProp
   const handleSend = () => {
     if (!input.trim() || isThinking) return;
 
-    const userMsg: Message = {
+    const userMsg: MessageDto = {
       id: Date.now().toString(),
       role: "user",
       content: input.trim(),
@@ -139,7 +133,7 @@ export function ChatPanel({ open, onClose, width, onResizeStart }: ChatPanelProp
     setIsThinking(true);
 
     setTimeout(() => {
-      const reply: Message = {
+      const reply: MessageDto = {
         id: (Date.now() + 1).toString(),
         role: "assistant",
         content:

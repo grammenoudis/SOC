@@ -2,22 +2,21 @@ import { Controller, Get, Post, Patch, Delete, Body, Param, Query, UseGuards, Ht
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthGuard } from '../common/guards/auth.guard';
 import { AdminGuard } from '../common/guards/admin.guard';
+import type { IngestLogDto, UpdateLogDto } from '@soc/shared';
 
 @Controller('logs')
 @UseGuards(AuthGuard)
 export class LogsController {
   constructor(private readonly prisma: PrismaService) {}
 
-  // POST /logs/ingest — bulk or single log ingestion
   @Post('ingest')
-  async ingest(@Body() body: any | any[]) {
+  async ingest(@Body() body: IngestLogDto | IngestLogDto[]) {
     const logs = Array.isArray(body) ? body : [body];
 
     if (logs.length === 0) {
       throw new HttpException('No logs provided', HttpStatus.BAD_REQUEST);
     }
 
-    // Validate all workspaceIds exist
     const workspaceIds = [...new Set(logs.map((l) => l.workspaceId))];
     const workspaces = await this.prisma.workspace.findMany({
       where: { id: { in: workspaceIds } },
@@ -52,7 +51,113 @@ export class LogsController {
     return { data: { count: result.count } };
   }
 
-  // GET /logs/workspace/:workspaceId — query logs with filters
+  @Get('workspace/:workspaceId/stats')
+  async getStats(@Param('workspaceId') workspaceId: string) {
+    const workspace = await this.prisma.workspace.findUnique({ where: { id: workspaceId } });
+    if (!workspace) {
+      throw new HttpException('Workspace not found', HttpStatus.NOT_FOUND);
+    }
+
+    const [
+      total,
+      severityCounts,
+      actionCounts,
+      eventTypeCounts,
+      vendorCounts,
+      topSourceIps,
+      topDestIps,
+      volumeOverTime,
+    ] = await Promise.all([
+      this.prisma.log.count({ where: { workspaceId } }),
+
+      this.prisma.log.groupBy({
+        by: ['severity'],
+        where: { workspaceId },
+        _count: { severity: true },
+      }),
+
+      this.prisma.log.groupBy({
+        by: ['action'],
+        where: { workspaceId, action: { not: null } },
+        _count: { action: true },
+      }),
+
+      this.prisma.log.groupBy({
+        by: ['eventType'],
+        where: { workspaceId },
+        _count: { eventType: true },
+      }),
+
+      this.prisma.log.groupBy({
+        by: ['vendor'],
+        where: { workspaceId },
+        _count: { vendor: true },
+      }),
+
+      this.prisma.log.groupBy({
+        by: ['sourceIp'],
+        where: { workspaceId, sourceIp: { not: null } },
+        _count: { sourceIp: true },
+        orderBy: { _count: { sourceIp: 'desc' } },
+        take: 10,
+      }),
+
+      this.prisma.log.groupBy({
+        by: ['destinationIp'],
+        where: { workspaceId, destinationIp: { not: null } },
+        _count: { destinationIp: true },
+        orderBy: { _count: { destinationIp: 'desc' } },
+        take: 10,
+      }),
+
+      this.prisma.log.findMany({
+        where: { workspaceId },
+        select: { timestamp: true },
+        orderBy: { timestamp: 'asc' },
+      }),
+    ]);
+
+    // bucket timestamps into ~12 slices for the chart
+    const timeBuckets: { time: string; count: number }[] = [];
+    if (volumeOverTime.length > 0) {
+      const timestamps = volumeOverTime.map((l) => l.timestamp);
+      const min = timestamps[0];
+      const max = timestamps[timestamps.length - 1];
+      const bucketSize = Math.max(Math.floor((max - min) / 12), 1);
+      const buckets: Record<number, number> = {};
+
+      for (const ts of timestamps) {
+        const bucket = Math.floor((ts - min) / bucketSize);
+        const bucketTs = min + bucket * bucketSize;
+        buckets[bucketTs] = (buckets[bucketTs] || 0) + 1;
+      }
+
+      for (const [ts, count] of Object.entries(buckets)) {
+        timeBuckets.push({
+          time: new Date(Number(ts) * 1000).toLocaleTimeString('en-GB', {
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: false,
+          }),
+          count,
+        });
+      }
+    }
+
+    return {
+      data: {
+        total,
+        severity: severityCounts.map((s) => ({ name: s.severity, value: s._count.severity })),
+        actions: actionCounts.map((a) => ({ name: a.action!, value: a._count.action })),
+        eventTypes: eventTypeCounts.map((e) => ({ name: e.eventType, value: e._count.eventType })),
+        vendors: vendorCounts.map((v) => ({ name: v.vendor, value: v._count.vendor })),
+        topSourceIps: topSourceIps.map((s) => ({ ip: s.sourceIp!, count: s._count.sourceIp })),
+        topDestIps: topDestIps.map((d) => ({ ip: d.destinationIp!, count: d._count.destinationIp })),
+        volume: timeBuckets,
+      },
+    };
+  }
+
   @Get('workspace/:workspaceId')
   async getByWorkspace(
     @Param('workspaceId') workspaceId: string,
@@ -82,14 +187,12 @@ export class LogsController {
     if (sourceIp) where.sourceIp = sourceIp;
     if (destinationIp) where.destinationIp = destinationIp;
 
-    // Time range filter (unix epoch)
     if (from || to) {
       where.timestamp = {};
       if (from) where.timestamp.gte = parseInt(from, 10);
       if (to) where.timestamp.lte = parseInt(to, 10);
     }
 
-    // Full-text search on rawLog
     if (search) {
       where.rawLog = { contains: search, mode: 'insensitive' };
     }
@@ -118,7 +221,6 @@ export class LogsController {
     };
   }
 
-  // GET /logs/:id — single log detail
   @Get(':id')
   async getById(@Param('id') id: string) {
     const log = await this.prisma.log.findUnique({
@@ -133,20 +235,11 @@ export class LogsController {
     return { data: log };
   }
 
-  // PATCH /logs/:id — update a log entry (admin only)
   @Patch(':id')
   @UseGuards(AdminGuard)
   async update(
     @Param('id') id: string,
-    @Body() body: {
-      severity?: string;
-      vendor?: string;
-      eventType?: string;
-      action?: string;
-      application?: string;
-      protocol?: string;
-      policy?: string;
-    },
+    @Body() body: UpdateLogDto,
   ) {
     const existing = await this.prisma.log.findUnique({ where: { id } });
     if (!existing) {
@@ -170,7 +263,6 @@ export class LogsController {
     return { data: log };
   }
 
-  // DELETE /logs/:id — delete a single log (admin only)
   @Delete(':id')
   @UseGuards(AdminGuard)
   async delete(@Param('id') id: string) {
@@ -183,7 +275,6 @@ export class LogsController {
     return { data: { id } };
   }
 
-  // DELETE /logs/workspace/:workspaceId — clear all logs for a workspace (admin only)
   @Delete('workspace/:workspaceId')
   @UseGuards(AdminGuard)
   async deleteByWorkspace(@Param('workspaceId') workspaceId: string) {

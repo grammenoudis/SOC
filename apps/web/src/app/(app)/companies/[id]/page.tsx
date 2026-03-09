@@ -11,22 +11,7 @@ import {
 import { ArrowLeft } from "lucide-react";
 import { CreateWorkspaceDialog } from "@/components/create-workspace-dialog";
 import api from "@/lib/api";
-
-interface Workspace {
-  id: string;
-  name: string;
-  description: string | null;
-  autoResponseEnabled: boolean;
-  createdAt: string;
-}
-
-interface CompanyDetail {
-  id: string;
-  name: string;
-  contact: string | null;
-  workspaces: Workspace[];
-  workspaceCount: number;
-}
+import type { CompanyDetailDto } from "@soc/shared";
 
 export default function CompanyPage({
   params,
@@ -34,7 +19,7 @@ export default function CompanyPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = use(params);
-  const [company, setCompany] = useState<CompanyDetail | null>(null);
+  const [company, setCompany] = useState<CompanyDetailDto | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 

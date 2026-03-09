@@ -5,15 +5,7 @@ import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";
 import { ArrowLeft, FileText } from "lucide-react";
 import api from "@/lib/api";
-
-interface WorkspaceDetail {
-  id: string;
-  name: string;
-  description: string | null;
-  autoResponseEnabled: boolean;
-  createdAt: string;
-  company: { id: string; name: string };
-}
+import type { WorkspaceDetailDto } from "@soc/shared";
 
 export default function WorkspacePage({
   params,
@@ -21,7 +13,7 @@ export default function WorkspacePage({
   params: Promise<{ id: string; wsId: string }>;
 }) {
   const { id, wsId } = use(params);
-  const [workspace, setWorkspace] = useState<WorkspaceDetail | null>(null);
+  const [workspace, setWorkspace] = useState<WorkspaceDetailDto | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {

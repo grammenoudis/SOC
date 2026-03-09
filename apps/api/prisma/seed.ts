@@ -46,7 +46,6 @@ function generateLogs(workspaceId: string, count: number, baseTime: number) {
     const app = pick(APPLICATIONS);
     const protocol = pick(PROTOCOLS);
     const policy = pick(POLICIES);
-    // Spread logs over the time range
     const timestamp = baseTime - Math.floor(Math.random() * 86400 * 3);
 
     logs.push({
@@ -72,7 +71,6 @@ function generateLogs(workspaceId: string, count: number, baseTime: number) {
 async function main() {
   console.log('Seeding database...');
 
-  // 1. Create admin user
   let adminId: string | undefined;
   try {
     const res = await auth.api.signUpEmail({
@@ -89,7 +87,6 @@ async function main() {
     console.log('Admin user already exists');
   }
 
-  // 2. Create companies
   const companies = [
     { name: 'TechVault Inc.', contact: 'security@techvault.io' },
     { name: 'MedSecure Healthcare', contact: 'it@medsecure.com' },
@@ -109,7 +106,6 @@ async function main() {
     }
   }
 
-  // 3. Create workspaces
   const workspaceSpecs = [
     { companyIdx: 0, name: 'Production AWS', description: 'Main production environment on AWS' },
     { companyIdx: 0, name: 'Office Network', description: 'Corporate office LAN and WiFi' },
@@ -138,7 +134,6 @@ async function main() {
     }
   }
 
-  // 4. Seed logs (only if workspace has no logs)
   const now = Math.floor(Date.now() / 1000);
   const logCounts = [150, 120, 80, 200, 60, 180, 90]; // per workspace
 

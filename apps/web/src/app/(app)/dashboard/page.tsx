@@ -20,14 +20,7 @@ import { Star, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { CreateCompanyDialog } from "@/components/create-company-dialog";
 import api from "@/lib/api";
-
-interface Company {
-  id: string;
-  name: string;
-  contact: string | null;
-  workspaces: number;
-  createdAt: string;
-}
+import type { CompanyDto } from "@soc/shared";
 
 const alertsData = [
   { day: "Mon", critical: 3, warning: 8, info: 12 },
@@ -66,7 +59,7 @@ const logVolumeConfig: ChartConfig = {
 
 export default function Dashboard() {
   const [search, setSearch] = useState("");
-  const [companies, setCompanies] = useState<Company[]>([]);
+  const [companies, setCompanies] = useState<CompanyDto[]>([]);
   const [favorites, setFavorites] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
 

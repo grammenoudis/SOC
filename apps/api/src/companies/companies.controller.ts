@@ -2,6 +2,7 @@ import { Controller, Get, Post, Body, Param, UseGuards, HttpException, HttpStatu
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthGuard } from '../common/guards/auth.guard';
 import { AdminGuard } from '../common/guards/admin.guard';
+import type { CreateCompanyDto } from '@soc/shared';
 
 @Controller('companies')
 @UseGuards(AuthGuard)
@@ -58,7 +59,7 @@ export class CompaniesController {
 
   @Post()
   @UseGuards(AdminGuard)
-  async create(@Body() body: { name: string; contact?: string }) {
+  async create(@Body() body: CreateCompanyDto) {
     const { name, contact } = body;
 
     if (!name?.trim()) {

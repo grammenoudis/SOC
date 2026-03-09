@@ -12,7 +12,7 @@ async function bootstrap() {
     credentials: true,
   });
 
-  // Block direct sign-up — only admins can create users via POST /users
+  // admin-only signup gate
   const expressApp = app.getHttpAdapter().getInstance();
   expressApp.all('/api/auth/sign-up/*', async (req, res, next) => {
     const session = await auth.api.getSession({ headers: req.headers as any });
@@ -27,7 +27,6 @@ async function bootstrap() {
     next();
   });
 
-  // Mount Better Auth as raw Express middleware
   const betterAuthHandler = toNodeHandler(auth);
   expressApp.all('/api/auth/*', betterAuthHandler);
 

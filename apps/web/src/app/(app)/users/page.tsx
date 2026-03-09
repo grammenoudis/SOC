@@ -9,22 +9,15 @@ import { CreateUserDialog } from "@/components/create-user-dialog";
 import { EditUserDialog } from "@/components/edit-user-dialog";
 import { Pencil, Trash2 } from "lucide-react";
 import api from "@/lib/api";
-
-interface User {
-  id: string;
-  name: string;
-  email: string;
-  role: string;
-  createdAt: string;
-}
+import type { UserDto } from "@soc/shared";
 
 export default function UsersPage() {
   const router = useRouter();
   const { data: session } = authClient.useSession();
-  const [users, setUsers] = useState<User[]>([]);
+  const [users, setUsers] = useState<UserDto[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [editingUser, setEditingUser] = useState<User | null>(null);
+  const [editingUser, setEditingUser] = useState<UserDto | null>(null);
 
   const fetchUsers = async () => {
     try {

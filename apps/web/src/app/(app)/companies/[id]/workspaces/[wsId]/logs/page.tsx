@@ -30,30 +30,7 @@ import {
   ArrowUpDown,
 } from "lucide-react";
 import api from "@/lib/api";
-
-interface Log {
-  id: string;
-  timestamp: number;
-  severity: string;
-  vendor: string;
-  eventType: string;
-  action: string | null;
-  application: string | null;
-  protocol: string | null;
-  policy: string | null;
-  sourceIp: string | null;
-  sourcePort: number | null;
-  destinationIp: string | null;
-  destinationPort: number | null;
-  rawLog: string;
-}
-
-interface LogMeta {
-  total: number;
-  page: number;
-  limit: number;
-  pages: number;
-}
+import type { LogDto, PaginationMeta, LogStatsDto } from "@soc/shared";
 
 const SEVERITY_COLORS: Record<string, string> = {
   critical: "oklch(0.65 0.20 25)",
@@ -117,9 +94,9 @@ export default function LogsPage({
   params: Promise<{ id: string; wsId: string }>;
 }) {
   const { id, wsId } = use(params);
-  const [logs, setLogs] = useState<Log[]>([]);
-  const [allLogs, setAllLogs] = useState<Log[]>([]);
-  const [meta, setMeta] = useState<LogMeta | null>(null);
+  const [logs, setLogs] = useState<LogDto[]>([]);
+  const [meta, setMeta] = useState<PaginationMeta | null>(null);
+  const [stats, setStats] = useState<LogStatsDto | null>(null);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
@@ -129,21 +106,15 @@ export default function LogsPage({
   const [sortDir, setSortDir] = useState<"desc" | "asc">("desc");
   const [workspace, setWorkspace] = useState<{ name: string; company: { id: string; name: string } } | null>(null);
 
-  // Fetch workspace info
   useEffect(() => {
     api.get(`/companies/${id}/workspaces/${wsId}`)
       .then(({ data: json }) => setWorkspace(json.data))
       .catch(() => {});
+    api.get(`/logs/workspace/${wsId}/stats`)
+      .then(({ data: json }) => setStats(json.data))
+      .catch(() => {});
   }, [id, wsId]);
 
-  // Fetch all logs for charts (first 1000)
-  useEffect(() => {
-    api.get(`/logs/workspace/${wsId}`, { params: { limit: 200, page: 1 } })
-      .then(({ data: json }) => setAllLogs(json.data))
-      .catch(() => {});
-  }, [wsId]);
-
-  // Fetch filtered/paginated logs
   const fetchLogs = useCallback(async () => {
     setLoading(true);
     try {
@@ -169,77 +140,6 @@ export default function LogsPage({
     fetchLogs();
   }, [fetchLogs]);
 
-  // Chart data computations
-  const severityDist = useMemo(() => {
-    const counts: Record<string, number> = {};
-    allLogs.forEach((l) => {
-      counts[l.severity] = (counts[l.severity] || 0) + 1;
-    });
-    return Object.entries(counts).map(([name, value]) => ({ name, value }));
-  }, [allLogs]);
-
-  const actionDist = useMemo(() => {
-    const counts: Record<string, number> = {};
-    allLogs.forEach((l) => {
-      const a = l.action || "unknown";
-      counts[a] = (counts[a] || 0) + 1;
-    });
-    return Object.entries(counts).map(([name, value]) => ({ name, value }));
-  }, [allLogs]);
-
-  const volumeOverTime = useMemo(() => {
-    if (allLogs.length === 0) return [];
-    const sorted = [...allLogs].sort((a, b) => a.timestamp - b.timestamp);
-    const min = sorted[0].timestamp;
-    const max = sorted[sorted.length - 1].timestamp;
-    const range = max - min;
-    const bucketSize = Math.max(Math.floor(range / 12), 1);
-    const buckets: Record<string, number> = {};
-
-    sorted.forEach((l) => {
-      const bucket = Math.floor((l.timestamp - min) / bucketSize);
-      const bucketTs = min + bucket * bucketSize;
-      const label = new Date(bucketTs * 1000).toLocaleTimeString("en-GB", {
-        hour: "2-digit",
-        minute: "2-digit",
-        hour12: false,
-      });
-      buckets[label] = (buckets[label] || 0) + 1;
-    });
-
-    return Object.entries(buckets).map(([time, count]) => ({ time, count }));
-  }, [allLogs]);
-
-  const topSourceIps = useMemo(() => {
-    const counts: Record<string, number> = {};
-    allLogs.forEach((l) => {
-      if (l.sourceIp) counts[l.sourceIp] = (counts[l.sourceIp] || 0) + 1;
-    });
-    return Object.entries(counts)
-      .sort(([, a], [, b]) => b - a)
-      .slice(0, 10)
-      .map(([ip, count]) => ({ ip, count }));
-  }, [allLogs]);
-
-  const topDestIps = useMemo(() => {
-    const counts: Record<string, number> = {};
-    allLogs.forEach((l) => {
-      if (l.destinationIp) counts[l.destinationIp] = (counts[l.destinationIp] || 0) + 1;
-    });
-    return Object.entries(counts)
-      .sort(([, a], [, b]) => b - a)
-      .slice(0, 10)
-      .map(([ip, count]) => ({ ip, count }));
-  }, [allLogs]);
-
-  const eventTypes = useMemo(() => {
-    return [...new Set(allLogs.map((l) => l.eventType))].sort();
-  }, [allLogs]);
-
-  const actions = useMemo(() => {
-    return [...new Set(allLogs.map((l) => l.action).filter(Boolean))].sort();
-  }, [allLogs]);
-
   const displayedLogs = useMemo(() => {
     return sortDir === "asc" ? [...logs].reverse() : logs;
   }, [logs, sortDir]);
@@ -261,7 +161,7 @@ export default function LogsPage({
           <h1 className="text-lg font-semibold">Log Explorer</h1>
         </div>
         <div className="ml-auto text-xs text-muted-foreground font-mono">
-          {meta ? `${meta.total.toLocaleString()} logs` : ""}
+          {stats ? `${stats.total.toLocaleString()} logs` : ""}
         </div>
       </div>
 
@@ -271,7 +171,7 @@ export default function LogsPage({
           <CardContent className="p-4">
             <p className="text-xs text-muted-foreground">Total Logs</p>
             <p className="text-2xl font-semibold font-mono mt-1">
-              {meta?.total.toLocaleString() ?? "..."}
+              {stats?.total.toLocaleString() ?? "..."}
             </p>
           </CardContent>
         </Card>
@@ -279,7 +179,7 @@ export default function LogsPage({
           <CardContent className="p-4">
             <p className="text-xs text-muted-foreground">Unique Sources</p>
             <p className="text-2xl font-semibold font-mono mt-1">
-              {topSourceIps.length}
+              {stats?.topSourceIps.length ?? "..."}
             </p>
           </CardContent>
         </Card>
@@ -287,7 +187,7 @@ export default function LogsPage({
           <CardContent className="p-4">
             <p className="text-xs text-muted-foreground">Event Types</p>
             <p className="text-2xl font-semibold font-mono mt-1">
-              {eventTypes.length}
+              {stats?.eventTypes.length ?? "..."}
             </p>
           </CardContent>
         </Card>
@@ -295,7 +195,7 @@ export default function LogsPage({
           <CardContent className="p-4">
             <p className="text-xs text-muted-foreground">Vendors</p>
             <p className="text-2xl font-semibold font-mono mt-1">
-              {[...new Set(allLogs.map((l) => l.vendor))].length}
+              {stats?.vendors.length ?? "..."}
             </p>
           </CardContent>
         </Card>
@@ -310,7 +210,7 @@ export default function LogsPage({
           </CardHeader>
           <CardContent className="p-4 pt-0">
             <ChartContainer config={volumeConfig} className="h-[160px] w-full">
-              <AreaChart data={volumeOverTime}>
+              <AreaChart data={stats?.volume ?? []}>
                 <XAxis dataKey="time" tickLine={false} axisLine={false} fontSize={11} tickMargin={4} />
                 <ChartTooltip content={<ChartTooltipContent />} />
                 <defs>
@@ -335,7 +235,7 @@ export default function LogsPage({
               <PieChart>
                 <ChartTooltip content={<ChartTooltipContent />} />
                 <Pie
-                  data={severityDist}
+                  data={stats?.severity ?? []}
                   dataKey="value"
                   nameKey="name"
                   cx="50%"
@@ -344,7 +244,7 @@ export default function LogsPage({
                   outerRadius={65}
                   paddingAngle={2}
                 >
-                  {severityDist.map((entry) => (
+                  {(stats?.severity ?? []).map((entry) => (
                     <Cell
                       key={entry.name}
                       fill={SEVERITY_COLORS[entry.name] || SEVERITY_COLORS.unknown}
@@ -363,12 +263,12 @@ export default function LogsPage({
           </CardHeader>
           <CardContent className="p-4 pt-0">
             <ChartContainer config={actionConfig} className="h-[160px] w-full">
-              <BarChart data={actionDist} layout="vertical">
+              <BarChart data={stats?.actions ?? []} layout="vertical">
                 <XAxis type="number" tickLine={false} axisLine={false} fontSize={11} />
                 <YAxis dataKey="name" type="category" tickLine={false} axisLine={false} fontSize={11} width={50} />
                 <ChartTooltip content={<ChartTooltipContent />} />
                 <Bar dataKey="value" radius={[0, 4, 4, 0]}>
-                  {actionDist.map((entry) => (
+                  {(stats?.actions ?? []).map((entry) => (
                     <Cell
                       key={entry.name}
                       fill={ACTION_COLORS[entry.name] || "oklch(0.55 0.03 250)"}
@@ -387,13 +287,13 @@ export default function LogsPage({
           </CardHeader>
           <CardContent className="p-4 pt-0">
             <div className="space-y-1.5 max-h-[160px] overflow-y-auto">
-              {topSourceIps.map(({ ip, count }) => (
+              {(stats?.topSourceIps ?? []).map(({ ip, count }) => (
                 <div key={ip} className="flex items-center justify-between text-xs">
                   <span className="font-mono text-muted-foreground">{ip}</span>
                   <span className="font-mono font-medium">{count}</span>
                 </div>
               ))}
-              {topSourceIps.length === 0 && (
+              {stats && stats.topSourceIps.length === 0 && (
                 <p className="text-xs text-muted-foreground">No data</p>
               )}
             </div>
@@ -407,13 +307,13 @@ export default function LogsPage({
           </CardHeader>
           <CardContent className="p-4 pt-0">
             <div className="space-y-1.5 max-h-[160px] overflow-y-auto">
-              {topDestIps.map(({ ip, count }) => (
+              {(stats?.topDestIps ?? []).map(({ ip, count }) => (
                 <div key={ip} className="flex items-center justify-between text-xs">
                   <span className="font-mono text-muted-foreground">{ip}</span>
                   <span className="font-mono font-medium">{count}</span>
                 </div>
               ))}
-              {topDestIps.length === 0 && (
+              {stats && stats.topDestIps.length === 0 && (
                 <p className="text-xs text-muted-foreground">No data</p>
               )}
             </div>
@@ -450,8 +350,8 @@ export default function LogsPage({
           className="h-8 rounded-md border border-border bg-background px-2 text-xs"
         >
           <option value="">All event types</option>
-          {eventTypes.map((t) => (
-            <option key={t} value={t}>{t}</option>
+          {(stats?.eventTypes ?? []).map((t) => (
+            <option key={t.name} value={t.name}>{t.name}</option>
           ))}
         </select>
         <select
@@ -460,8 +360,8 @@ export default function LogsPage({
           className="h-8 rounded-md border border-border bg-background px-2 text-xs"
         >
           <option value="">All actions</option>
-          {actions.map((a) => (
-            <option key={a} value={a!}>{a}</option>
+          {(stats?.actions ?? []).map((a) => (
+            <option key={a.name} value={a.name}>{a.name}</option>
           ))}
         </select>
         <Button

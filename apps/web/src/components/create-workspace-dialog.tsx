@@ -15,6 +15,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Plus } from "lucide-react";
 import api from "@/lib/api";
+import { toast } from "sonner";
 
 
 interface CreateWorkspaceDialogProps {
@@ -36,6 +37,7 @@ export function CreateWorkspaceDialog({ companyId, onCreated }: CreateWorkspaceD
 
     try {
       await api.post(`/companies/${companyId}/workspaces`, { name, description });
+      toast.success("Workspace created");
       setName("");
       setDescription("");
       setOpen(false);

@@ -15,6 +15,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Plus } from "lucide-react";
 import api from "@/lib/api";
+import { toast } from "sonner";
 
 interface CreateCompanyDialogProps {
   onCreated: () => void;
@@ -34,6 +35,7 @@ export function CreateCompanyDialog({ onCreated }: CreateCompanyDialogProps) {
 
     try {
       await api.post("/companies", { name, contact: contactEmail });
+      toast.success("Company created");
       setName("");
       setContactEmail("");
       setOpen(false);

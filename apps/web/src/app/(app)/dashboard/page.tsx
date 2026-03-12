@@ -21,7 +21,7 @@ import { cn } from "@/lib/utils";
 import { CreateCompanyDialog } from "@/components/create-company-dialog";
 import api from "@/lib/api";
 import { useGlobalSocket } from "@/lib/socket";
-import type { CompanyDto } from "@soc/shared";
+import type { CompanyDto, AlertStatsDto } from "@soc/shared";
 
 const alertsData = [
   { day: "Mon", critical: 3, warning: 8, info: 12 },
@@ -64,6 +64,7 @@ export default function Dashboard() {
   const [favorites, setFavorites] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [totalLogs, setTotalLogs] = useState(0);
+  const [alertStats, setAlertStats] = useState<AlertStatsDto | null>(null);
 
   const fetchCompanies = useCallback(async () => {
     try {
@@ -80,6 +81,9 @@ export default function Dashboard() {
     fetchCompanies();
     api.get("/favorites")
       .then(({ data: json }) => setFavorites(new Set(json.data)))
+      .catch(() => {});
+    api.get("/alerts/stats")
+      .then(({ data: json }) => setAlertStats(json.data))
       .catch(() => {});
   }, [fetchCompanies]);
 
@@ -120,7 +124,7 @@ export default function Dashboard() {
   const stats = [
     { label: "Companies", value: String(companies.length) },
     { label: "Workspaces", value: String(totalWorkspaces) },
-    { label: "Open Alerts", value: "0" },
+    { label: "Open Alerts", value: String(alertStats ? alertStats.open + alertStats.acknowledged + alertStats.investigating : 0) },
     { label: "Logs (live)", value: totalLogs.toLocaleString() },
   ];
 

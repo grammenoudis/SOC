@@ -9,6 +9,7 @@ import { CreateUserDialog } from "@/components/create-user-dialog";
 import { EditUserDialog } from "@/components/edit-user-dialog";
 import { Pencil, Trash2 } from "lucide-react";
 import api from "@/lib/api";
+import { toast } from "sonner";
 import type { UserDto } from "@soc/shared";
 
 export default function UsersPage() {
@@ -42,6 +43,7 @@ export default function UsersPage() {
     if (!confirm(`Delete user "${name}"? This cannot be undone.`)) return;
     try {
       await api.delete(`/users/${id}`);
+      toast.success("User deleted");
       await fetchUsers();
     } catch (err: any) {
       setError(err.response?.data?.message || err.message);

@@ -12,6 +12,7 @@ import {
   type WsLogUpdatedPayload,
   type WsLogDeletedPayload,
   type WsLogsClearedPayload,
+  type WsAlertPayload,
 } from '@soc/shared';
 
 @WebSocketGateway({
@@ -55,5 +56,15 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   emitLogsCleared(payload: WsLogsClearedPayload) {
     this.server.to(`workspace:${payload.workspaceId}`).emit(WS_EVENTS.LOGS_CLEARED, payload);
     this.server.emit(WS_EVENTS.LOGS_CLEARED, payload);
+  }
+
+  emitAlertCreated(payload: WsAlertPayload) {
+    this.server.to(`workspace:${payload.workspaceId}`).emit(WS_EVENTS.ALERT_CREATED, payload);
+    this.server.emit(WS_EVENTS.ALERT_CREATED, payload);
+  }
+
+  emitAlertUpdated(payload: WsAlertPayload) {
+    this.server.to(`workspace:${payload.workspaceId}`).emit(WS_EVENTS.ALERT_UPDATED, payload);
+    this.server.emit(WS_EVENTS.ALERT_UPDATED, payload);
   }
 }

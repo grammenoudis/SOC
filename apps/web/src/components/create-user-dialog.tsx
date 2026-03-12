@@ -15,6 +15,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Plus, Eye, EyeOff, RefreshCw } from "lucide-react";
 import api from "@/lib/api";
+import { toast } from "sonner";
 
 interface CreateUserDialogProps {
   onCreated: () => void;
@@ -45,6 +46,7 @@ export function CreateUserDialog({ onCreated }: CreateUserDialogProps) {
 
     try {
       await api.post("/users", { name, email, password, role });
+      toast.success("User created");
       setName("");
       setEmail("");
       setPassword("");

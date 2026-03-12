@@ -14,6 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Eye, EyeOff, RefreshCw } from "lucide-react";
 import api from "@/lib/api";
+import { toast } from "sonner";
 import type { UserDto } from "@soc/shared";
 
 interface EditUserDialogProps {
@@ -71,6 +72,7 @@ export function EditUserDialog({ user, open, onOpenChange, onSaved, isSelf }: Ed
       }
 
       await api.patch(`/users/${user.id}`, body);
+      toast.success("User updated");
       onOpenChange(false);
       onSaved();
     } catch (err: any) {

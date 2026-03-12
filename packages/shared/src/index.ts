@@ -12,7 +12,7 @@ export type LogAction = (typeof LOG_ACTIONS)[number];
 export const USER_ROLES = ['admin', 'analyst'] as const;
 export type UserRole = (typeof USER_ROLES)[number];
 
-export const ALERT_STATUSES = ['open', 'acknowledged', 'resolved'] as const;
+export const ALERT_STATUSES = ['open', 'acknowledged', 'investigating', 'resolved'] as const;
 export type AlertStatus = (typeof ALERT_STATUSES)[number];
 
 export const AUTO_RESPONSE_STATUSES = ['proposed', 'approved', 'executed', 'rejected'] as const;
@@ -161,6 +161,66 @@ export interface LogStatsDto {
   volume: { time: string; count: number }[];
 }
 
+// ── Alert DTOs ──────────────────────────────────────────────
+
+export interface AlertDto {
+  id: string;
+  workspaceId: string;
+  title: string;
+  description: string;
+  severity: string;
+  status: string;
+  assigneeId: string | null;
+  assignee: { id: string; name: string; email: string } | null;
+  workspace: { id: string; name: string; company: { id: string; name: string } };
+  sourceIp: string | null;
+  destinationIp: string | null;
+  logCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface UpdateAlertDto {
+  status?: string;
+  assigneeId?: string | null;
+}
+
+export interface AlertStatsDto {
+  total: number;
+  open: number;
+  acknowledged: number;
+  investigating: number;
+  resolved: number;
+  bySeverity: { name: string; value: number }[];
+}
+
+export interface AlertNoteDto {
+  id: string;
+  alertId: string;
+  content: string;
+  createdAt: string;
+  user: { id: string; name: string; email: string };
+}
+
+export interface CreateAlertNoteDto {
+  content: string;
+}
+
+export interface AlertActivityDto {
+  id: string;
+  alertId: string;
+  action: string;
+  detail: string | null;
+  createdAt: string;
+  user: { id: string; name: string; email: string };
+  alert: {
+    id: string;
+    title: string;
+    severity: string;
+    workspace: { id: string; name: string; company: { id: string; name: string } };
+  };
+}
+
 // ── WebSocket Events ────────────────────────────────────────
 
 export const WS_EVENTS = {
@@ -170,7 +230,14 @@ export const WS_EVENTS = {
   LOGS_CLEARED: 'logs:cleared',
   JOIN_WORKSPACE: 'workspace:join',
   LEAVE_WORKSPACE: 'workspace:leave',
+  ALERT_CREATED: 'alert:created',
+  ALERT_UPDATED: 'alert:updated',
 } as const;
+
+export interface WsAlertPayload {
+  alertId: string;
+  workspaceId: string;
+}
 
 export interface WsLogsIngestedPayload {
   workspaceId: string;

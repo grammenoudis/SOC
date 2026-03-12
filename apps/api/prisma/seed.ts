@@ -150,6 +150,81 @@ async function main() {
     console.log(`Seeded ${logCounts[i]} logs for "${ws.name}"`);
   }
 
+  // seed analysts
+  const analystSpecs = [
+    { name: 'Alice Chen', email: 'alice@lurkas.com', password: 'analyst123' },
+    { name: 'Bob Martinez', email: 'bob@lurkas.com', password: 'analyst123' },
+  ];
+
+  const analystIds: string[] = [];
+  for (const a of analystSpecs) {
+    const existing = await prisma.user.findFirst({ where: { email: a.email } });
+    if (existing) {
+      analystIds.push(existing.id);
+      console.log(`Analyst "${a.name}" already exists`);
+    } else {
+      try {
+        const res = await auth.api.signUpEmail({
+          body: { name: a.name, email: a.email, password: a.password },
+        });
+        if (res?.user) {
+          analystIds.push(res.user.id);
+          console.log(`Analyst "${a.name}" created: ${a.email} / ${a.password}`);
+        }
+      } catch {
+        console.log(`Failed to create analyst "${a.name}"`);
+      }
+    }
+  }
+
+  // seed alerts
+  const alertCount = await prisma.alert.count();
+  if (alertCount === 0) {
+    const alertTemplates = [
+      { title: 'Brute force SSH attempt detected', description: 'Multiple failed SSH login attempts from 203.0.113.45 targeting port 22 across several hosts. 47 attempts in 5 minutes.', severity: 'critical', sourceIp: '203.0.113.45', destinationIp: '10.0.0.55' },
+      { title: 'Suspicious outbound DNS traffic', description: 'Anomalous DNS query volume from 192.168.11.150 to external resolver. Potential DNS tunneling or data exfiltration.', severity: 'high', sourceIp: '192.168.11.150', destinationIp: '8.8.8.8' },
+      { title: 'Unauthorized port scan activity', description: 'Sequential port scanning detected from internal host 172.16.1.10 across /24 subnet. 1500+ ports scanned in under 2 minutes.', severity: 'high', sourceIp: '172.16.1.10', destinationIp: '172.16.1.1' },
+      { title: 'Malware callback to known C2 server', description: 'Host 192.168.1.100 established connection to known command-and-control IP on port 443. Matches threat intel feed IOC.', severity: 'critical', sourceIp: '192.168.1.100', destinationIp: '93.184.216.34' },
+      { title: 'Policy violation: FTP to external host', description: 'FTP data transfer to external IP detected from 10.10.10.5 violating data loss prevention policy.', severity: 'medium', sourceIp: '10.10.10.5', destinationIp: '93.184.216.34' },
+      { title: 'Repeated denied connections from guest network', description: 'Host 192.168.50.33 on guest network generating excessive denied connection attempts to internal servers.', severity: 'medium', sourceIp: '192.168.50.33', destinationIp: '10.0.0.1' },
+      { title: 'SSL certificate mismatch on internal service', description: 'Internal web service at 10.0.0.254 presenting certificate with mismatched CN. Possible MitM or misconfiguration.', severity: 'low', sourceIp: '192.168.11.151', destinationIp: '10.0.0.254' },
+      { title: 'Unusual after-hours VPN access', description: 'VPN login from 203.0.113.45 at 03:24 AM outside normal business hours. User account flagged for review.', severity: 'medium', sourceIp: '203.0.113.45', destinationIp: '10.0.0.1' },
+      { title: 'ICMP flood detected', description: 'High volume of ICMP packets from 192.168.11.150 to multiple internal destinations. Potential reconnaissance or DoS attempt.', severity: 'high', sourceIp: '192.168.11.150', destinationIp: '192.168.11.140' },
+      { title: 'Deprecated TLS version in use', description: 'Connection using TLS 1.0 detected between 10.0.0.102 and 172.16.1.1. Protocol is deprecated and vulnerable.', severity: 'low', sourceIp: '10.0.0.102', destinationIp: '172.16.1.1' },
+      { title: 'Lateral movement attempt via SMB', description: 'Compromised host 192.168.11.151 attempting SMB connections to multiple internal file servers on port 445.', severity: 'critical', sourceIp: '192.168.11.151', destinationIp: '10.0.0.55' },
+      { title: 'Excessive failed API authentication', description: 'Patient portal API endpoint receiving 200+ failed auth attempts per minute from 203.0.113.45. Credential stuffing suspected.', severity: 'high', sourceIp: '203.0.113.45', destinationIp: '192.168.11.140' },
+    ];
+
+    const allUsers = adminId ? [adminId, ...analystIds] : analystIds;
+    const statuses = ['open', 'open', 'open', 'acknowledged', 'acknowledged', 'investigating', 'resolved'];
+
+    for (let i = 0; i < alertTemplates.length; i++) {
+      const t = alertTemplates[i];
+      const ws = createdWorkspaces[i % createdWorkspaces.length];
+      const status = statuses[i % statuses.length];
+      const assigneeId = status !== 'open' && allUsers.length > 0
+        ? allUsers[i % allUsers.length]
+        : null;
+
+      await prisma.alert.create({
+        data: {
+          workspaceId: ws.id,
+          title: t.title,
+          description: t.description,
+          severity: t.severity,
+          status,
+          assigneeId,
+          sourceIp: t.sourceIp,
+          destinationIp: t.destinationIp,
+          logCount: Math.floor(Math.random() * 50) + 5,
+        },
+      });
+    }
+    console.log(`Seeded ${alertTemplates.length} alerts`);
+  } else {
+    console.log(`Alerts already exist (${alertCount}), skipping`);
+  }
+
   console.log('Seeding complete.');
   await prisma.$disconnect();
 }

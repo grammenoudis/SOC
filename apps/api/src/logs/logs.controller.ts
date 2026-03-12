@@ -6,13 +6,13 @@ import { EventsGateway } from '../events/events.gateway';
 import type { IngestLogDto, UpdateLogDto } from '@soc/shared';
 
 @Controller('logs')
-@UseGuards(AuthGuard)
 export class LogsController {
   constructor(
     private readonly prisma: PrismaService,
     private readonly events: EventsGateway,
   ) {}
 
+  // no auth — called by external log agents
   @Post('ingest')
   async ingest(@Body() body: IngestLogDto | IngestLogDto[]) {
     const logs = Array.isArray(body) ? body : [body];
@@ -61,6 +61,7 @@ export class LogsController {
   }
 
   @Get('workspace/:workspaceId/stats')
+  @UseGuards(AuthGuard)
   async getStats(@Param('workspaceId') workspaceId: string) {
     const workspace = await this.prisma.workspace.findUnique({ where: { id: workspaceId } });
     if (!workspace) {
@@ -168,6 +169,7 @@ export class LogsController {
   }
 
   @Get('workspace/:workspaceId')
+  @UseGuards(AuthGuard)
   async getByWorkspace(
     @Param('workspaceId') workspaceId: string,
     @Query('severity') severity?: string,
@@ -231,6 +233,7 @@ export class LogsController {
   }
 
   @Get(':id')
+  @UseGuards(AuthGuard)
   async getById(@Param('id') id: string) {
     const log = await this.prisma.log.findUnique({
       where: { id },
@@ -245,7 +248,7 @@ export class LogsController {
   }
 
   @Patch(':id')
-  @UseGuards(AdminGuard)
+  @UseGuards(AuthGuard, AdminGuard)
   async update(
     @Param('id') id: string,
     @Body() body: UpdateLogDto,
@@ -274,7 +277,7 @@ export class LogsController {
   }
 
   @Delete(':id')
-  @UseGuards(AdminGuard)
+  @UseGuards(AuthGuard, AdminGuard)
   async delete(@Param('id') id: string) {
     const existing = await this.prisma.log.findUnique({ where: { id } });
     if (!existing) {
@@ -287,7 +290,7 @@ export class LogsController {
   }
 
   @Delete('workspace/:workspaceId')
-  @UseGuards(AdminGuard)
+  @UseGuards(AuthGuard, AdminGuard)
   async deleteByWorkspace(@Param('workspaceId') workspaceId: string) {
     const workspace = await this.prisma.workspace.findUnique({ where: { id: workspaceId } });
     if (!workspace) {

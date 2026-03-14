@@ -246,7 +246,7 @@ export default function RulesPage() {
 
             <div>
               <label className="text-xs text-muted-foreground block mb-1.5">Category</label>
-              <Select value={category} onValueChange={setCategory}>
+              <Select value={category} onValueChange={(v) => setCategory(v ?? "general")}>
                 <SelectTrigger className="h-9 text-sm">
                   <SelectValue />
                 </SelectTrigger>

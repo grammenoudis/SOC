@@ -5,4 +5,4 @@
 .env
 *.md
 .vscode
-apps/logger
+apps/logger/.gitignore

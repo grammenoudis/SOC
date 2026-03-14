@@ -53,7 +53,7 @@ export function CreateCompanyDialog({ onCreated }: CreateCompanyDialogProps) {
         render={
           <Button size="sm" className="h-8 text-xs gap-1.5">
             <Plus className="size-3.5" />
-            New Company
+            New
           </Button>
         }
       />

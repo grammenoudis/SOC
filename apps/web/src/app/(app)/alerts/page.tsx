@@ -350,7 +350,7 @@ export default function AlertsPage() {
               ))}
             </div>
 
-            <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setPage(1); }}>
+            <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v ?? "all"); setPage(1); }}>
               <SelectTrigger className="w-40 h-8 text-sm">
                 <SelectValue placeholder="Status" />
               </SelectTrigger>
@@ -363,7 +363,7 @@ export default function AlertsPage() {
               </SelectContent>
             </Select>
 
-            <Select value={severityFilter} onValueChange={(v) => { setSeverityFilter(v); setPage(1); }}>
+            <Select value={severityFilter} onValueChange={(v) => { setSeverityFilter(v ?? "all"); setPage(1); }}>
               <SelectTrigger className="w-40 h-8 text-sm">
                 <SelectValue placeholder="Severity" />
               </SelectTrigger>
@@ -376,7 +376,7 @@ export default function AlertsPage() {
               </SelectContent>
             </Select>
 
-            <Select value={timeFilter} onValueChange={(v) => { setTimeFilter(v); setPage(1); }}>
+            <Select value={timeFilter} onValueChange={(v) => { setTimeFilter(v ?? "24h"); setPage(1); }}>
               <SelectTrigger className="w-36 h-8 text-sm">
                 <Clock className="size-3 mr-1 text-muted-foreground" />
                 <SelectValue placeholder="Time range" />
@@ -503,7 +503,7 @@ export default function AlertsPage() {
         /* ── Activity Log tab (admin only) ── */
         <>
           <div className="flex items-center gap-3 flex-wrap">
-            <Select value={actActionFilter} onValueChange={(v) => { setActActionFilter(v); setActPage(1); }}>
+            <Select value={actActionFilter} onValueChange={(v) => { setActActionFilter(v ?? "all"); setActPage(1); }}>
               <SelectTrigger className="w-44 h-8 text-sm">
                 <SelectValue placeholder="Action" />
               </SelectTrigger>
@@ -516,7 +516,7 @@ export default function AlertsPage() {
               </SelectContent>
             </Select>
 
-            <Select value={actUserFilter} onValueChange={(v) => { setActUserFilter(v); setActPage(1); }}>
+            <Select value={actUserFilter} onValueChange={(v) => { setActUserFilter(v ?? "all"); setActPage(1); }}>
               <SelectTrigger className="w-44 h-8 text-sm">
                 <SelectValue>
                   {actUserFilter === "all"
@@ -534,7 +534,7 @@ export default function AlertsPage() {
               </SelectContent>
             </Select>
 
-            <Select value={actTimeFilter} onValueChange={(v) => { setActTimeFilter(v); setActPage(1); }}>
+            <Select value={actTimeFilter} onValueChange={(v) => { setActTimeFilter(v ?? "24h"); setActPage(1); }}>
               <SelectTrigger className="w-36 h-8 text-sm">
                 <Clock className="size-3 mr-1 text-muted-foreground" />
                 <SelectValue placeholder="Time range" />
@@ -700,7 +700,7 @@ export default function AlertsPage() {
                     <label className="text-xs text-muted-foreground block mb-1.5">Status</label>
                     <Select
                       value={selectedAlert.status}
-                      onValueChange={(v) => updateAlert(selectedAlert.id, { status: v })}
+                      onValueChange={(v) => updateAlert(selectedAlert.id, { status: v ?? selectedAlert.status })}
                     >
                       <SelectTrigger className="h-8 text-sm w-full">
                         <SelectValue />
@@ -721,7 +721,7 @@ export default function AlertsPage() {
                         value={selectedAlert.assigneeId || "unassigned"}
                         onValueChange={(v) =>
                           updateAlert(selectedAlert.id, {
-                            assigneeId: v === "unassigned" ? null : v,
+                            assigneeId: !v || v === "unassigned" ? null : v,
                           })
                         }
                       >

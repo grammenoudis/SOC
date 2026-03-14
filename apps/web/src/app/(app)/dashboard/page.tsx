@@ -246,7 +246,7 @@ export default function Dashboard() {
               <div className="flex items-center justify-between px-3 pt-2">
                 <div className="flex items-center gap-1.5 text-sm font-medium">
                   <Globe className="size-3.5 text-muted-foreground" />
-                  Threat Map
+                  Log Map
                 </div>
                 {tooltipContent && (
                   <span className="text-[11px] text-muted-foreground">{tooltipContent}</span>

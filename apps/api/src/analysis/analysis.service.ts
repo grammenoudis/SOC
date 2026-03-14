@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Interval } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
 import { EventsGateway } from '../events/events.gateway';
+import { ReputationService } from '../reputation/reputation.service';
 
 interface LlmMessage {
   role: 'system' | 'user' | 'assistant';
@@ -44,6 +45,7 @@ export class AnalysisService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly events: EventsGateway,
+    private readonly reputation: ReputationService,
   ) {}
 
   @Interval(ANALYSIS_INTERVAL_MS)
@@ -151,6 +153,10 @@ export class AnalysisService {
       select: { title: true, severity: true, description: true },
     });
 
+    // fetch cached IP reputation for source IPs in this batch
+    const uniqueSrcIps = [...new Set(batch.map((l) => l.sourceIp).filter(Boolean) as string[])];
+    const reputations = await this.reputation.getCached(uniqueSrcIps);
+
     // build compact log data (no rawLog to save tokens)
     const compactLogs = batch.map((l) => ({
       timestamp: l.timestamp,
@@ -165,6 +171,7 @@ export class AnalysisService {
       app: l.application,
       srcCountry: l.srcCountry,
       dstCountry: l.dstCountry,
+      srcAbuseScore: l.sourceIp ? (reputations.get(l.sourceIp)?.abuseScore ?? null) : null,
     }));
 
     const rulesText = rules
@@ -175,6 +182,17 @@ export class AnalysisService {
       ? recentAlerts.map((a) => `- "${a.title}" (${a.severity}): ${a.description.slice(0, 100)}`).join('\n')
       : 'None';
 
+    // build reputation summary for IPs with notable scores
+    const repLines = uniqueSrcIps
+      .map((ip) => reputations.get(ip))
+      .filter((r): r is NonNullable<typeof r> => !!r && r.abuseScore > 0)
+      .map((r) => `  ${r.ip}: score=${r.abuseScore}/100, isp="${r.isp || 'unknown'}", reports=${r.totalReports}${r.usageType ? `, type="${r.usageType}"` : ''}`)
+      .join('\n');
+
+    const repContext = repLines
+      ? `\nIP REPUTATION (AbuseIPDB scores, 0-100 where higher = more malicious):\n${repLines}\n- Score ≥ 80: likely malicious — treat as high-confidence threat indicator\n- Score 25-79: suspicious — consider as supporting evidence\n`
+      : '';
+
     const systemPrompt = `You are an automated SOC alert generator. You analyze firewall/network logs and decide whether any security alerts should be generated based on the analysis rules provided.
 
 ANALYSIS RULES:
@@ -182,11 +200,12 @@ ${rulesText}
 
 EXISTING OPEN ALERTS (do NOT create duplicates of these):
 ${existingAlertsText}
-
+${repContext}
 INSTRUCTIONS:
 - Examine the logs below and apply the analysis rules.
 - Only generate alerts when the evidence clearly warrants it. Do not over-alert.
 - Each alert should represent a distinct security concern backed by multiple log entries when possible.
+- If a source IP has an abuse score ≥ 80, treat it as a confirmed threat indicator and elevate alert severity accordingly.
 - Return a JSON object with an "alerts" array. If no alerts are warranted, return {"alerts": []}.
 - Each alert object must have exactly these fields:
   {

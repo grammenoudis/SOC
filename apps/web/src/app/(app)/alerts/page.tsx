@@ -22,6 +22,7 @@ import { toast } from "sonner";
 import api from "@/lib/api";
 import { useGlobalSocket } from "@/lib/socket";
 import { authClient } from "@/lib/auth-client";
+import { IpBadge } from "@/components/ip-badge";
 import type { AlertDto, AlertStatsDto, AlertActivityDto, AlertNoteDto, UserDto, PaginationMeta } from "@soc/shared";
 
 const severityColors: Record<string, string> = {
@@ -437,9 +438,14 @@ export default function AlertsPage() {
                       <td className="px-4 py-3">
                         <div className="max-w-xs">
                           <p className="font-medium truncate">{alert.title}</p>
-                          <p className="text-xs text-muted-foreground truncate mt-0.5">
-                            {alert.sourceIp && `${alert.sourceIp} → ${alert.destinationIp}`}
-                          </p>
+                          {alert.sourceIp && (
+                            <div className="flex items-center gap-1 mt-0.5 text-xs text-muted-foreground">
+                              <IpBadge ip={alert.sourceIp} className="text-muted-foreground" />
+                              {alert.destinationIp && (
+                                <><span>→</span><span className="font-mono">{alert.destinationIp}</span></>
+                              )}
+                            </div>
+                          )}
                         </div>
                       </td>
                       <td className="px-4 py-3 text-muted-foreground">
@@ -670,7 +676,7 @@ export default function AlertsPage() {
                   {selectedAlert.sourceIp && (
                     <div>
                       <p className="text-muted-foreground mb-1">Source IP</p>
-                      <p className="font-mono">{selectedAlert.sourceIp}</p>
+                      <IpBadge ip={selectedAlert.sourceIp} />
                     </div>
                   )}
                   {selectedAlert.destinationIp && (

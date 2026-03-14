@@ -410,3 +410,19 @@ export interface SecurityReportDto {
   recommendations: string[];
   conclusion: string;
 }
+
+// ── IP Reputation DTOs ───────────────────────────────────────
+
+export interface IpReputationDto {
+  ip: string;
+  abuseScore: number;
+  countryCode: string | null;
+  isp: string | null;
+  domain: string | null;
+  usageType: string | null;
+  totalReports: number;
+  lastReportedAt: string | null;
+  isPublic: boolean;
+  isWhitelisted: boolean;
+  checkedAt: string;
+}

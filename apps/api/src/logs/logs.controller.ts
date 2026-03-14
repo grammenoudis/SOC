@@ -3,6 +3,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AuthGuard } from '../common/guards/auth.guard';
 import { AdminGuard } from '../common/guards/admin.guard';
 import { EventsGateway } from '../events/events.gateway';
+import { ReputationService } from '../reputation/reputation.service';
 import type { IngestLogDto, UpdateLogDto } from '@soc/shared';
 
 @Controller('logs')
@@ -10,6 +11,7 @@ export class LogsController {
   constructor(
     private readonly prisma: PrismaService,
     private readonly events: EventsGateway,
+    private readonly reputation: ReputationService,
   ) {}
 
   // no auth — called by external log agents
@@ -58,6 +60,10 @@ export class LogsController {
       const count = data.filter((d) => d.workspaceId === wsId).length;
       this.events.emitLogsIngested({ workspaceId: wsId, count });
     }
+
+    // warm reputation cache for all IPs in the batch (fire-and-forget)
+    const ips = data.flatMap((d) => [d.sourceIp, d.destinationIp]).filter(Boolean) as string[];
+    if (ips.length > 0) this.reputation.warmMany(ips).catch(() => {});
 
     return { data: { count: result.count } };
   }

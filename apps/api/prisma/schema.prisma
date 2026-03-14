@@ -266,6 +266,23 @@ model Message {
   @@map("messages")
 }
 
+model IpReputation {
+  ip             String    @id
+  abuseScore     Int       // 0-100
+  countryCode    String?
+  isp            String?
+  domain         String?
+  usageType      String?
+  totalReports   Int       @default(0)
+  lastReportedAt DateTime?
+  isPublic       Boolean   @default(true)
+  isWhitelisted  Boolean   @default(false)
+  checkedAt      DateTime  @default(now())
+
+  @@index([checkedAt])
+  @@map("ip_reputation")
+}
+
 model LlmUsage {
   id               String   @id @default(cuid())
   userId           String?

@@ -16,9 +16,10 @@ import { DashboardModule } from './dashboard/dashboard.module';
 import { UsageModule } from './usage/usage.module';
 import { AnalysisModule } from './analysis/analysis.module';
 import { ReportsModule } from './reports/reports.module';
+import { ReputationModule } from './reputation/reputation.module';
 
 @Module({
-  imports: [PrismaModule, EventsModule, UsersModule, FavoritesModule, CompaniesModule, WorkspacesModule, LogsModule, ChatModule, AlertsModule, NotificationsModule, RulesModule, DashboardModule, UsageModule, AnalysisModule, ReportsModule],
+  imports: [PrismaModule, EventsModule, UsersModule, FavoritesModule, CompaniesModule, WorkspacesModule, LogsModule, ChatModule, AlertsModule, NotificationsModule, RulesModule, DashboardModule, UsageModule, AnalysisModule, ReportsModule, ReputationModule],
   controllers: [AppController],
   providers: [AppService],
 })

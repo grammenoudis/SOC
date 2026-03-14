@@ -27,6 +27,7 @@ import {
 } from "recharts";
 import { ArrowLeft, AlertTriangle } from "lucide-react";
 import { CreateWorkspaceDialog } from "@/components/create-workspace-dialog";
+import { IpBadge } from "@/components/ip-badge";
 import api from "@/lib/api";
 import type { CompanyDetailDto } from "@soc/shared";
 
@@ -355,7 +356,7 @@ export default function CompanyPage({
                 <div className="space-y-1.5 max-h-[160px] overflow-y-auto pr-6">
                   {(stats?.topSourceIps ?? []).map(({ ip, count }) => (
                     <div key={ip} className="flex items-center justify-between text-xs">
-                      <span className="font-mono text-muted-foreground">{ip}</span>
+                      <IpBadge ip={ip} className="text-muted-foreground" />
                       <span className="font-mono font-medium">{count}</span>
                     </div>
                   ))}

@@ -31,6 +31,7 @@ import {
 } from "lucide-react";
 import api from "@/lib/api";
 import { useWorkspaceSocket } from "@/lib/socket";
+import { IpBadge } from "@/components/ip-badge";
 import type { LogDto, PaginationMeta, LogStatsDto, WorkspaceDetailDto } from "@soc/shared";
 
 const SEVERITY_COLORS: Record<string, string> = {
@@ -347,7 +348,7 @@ export default function WorkspacePage({
             <div className="space-y-1.5 max-h-[160px] overflow-y-auto pr-6">
               {(stats?.topSourceIps ?? []).map(({ ip, count }) => (
                 <div key={ip} className="flex items-center justify-between text-xs">
-                  <span className="font-mono text-muted-foreground">{ip}</span>
+                  <IpBadge ip={ip} className="text-muted-foreground" />
                   <span className="font-mono font-medium">{count}</span>
                 </div>
               ))}
@@ -512,8 +513,8 @@ export default function WorkspacePage({
                       )}
                     </td>
                     <td className="p-3 font-mono">{log.application || "-"}</td>
-                    <td className="p-3 font-mono whitespace-nowrap">
-                      {log.sourceIp ? `${log.sourceIp}${log.sourcePort ? `:${log.sourcePort}` : ""}` : "-"}
+                    <td className="p-3 whitespace-nowrap">
+                      {log.sourceIp ? <IpBadge ip={log.sourceIp} port={log.sourcePort} /> : "-"}
                     </td>
                     <td className="p-3 font-mono whitespace-nowrap">
                       {log.destinationIp ? `${log.destinationIp}${log.destinationPort ? `:${log.destinationPort}` : ""}` : "-"}

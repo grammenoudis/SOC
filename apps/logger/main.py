@@ -57,6 +57,12 @@ import urllib.request
 import urllib.error
 from collections import defaultdict
 
+try:
+    import paramiko
+    HAS_PARAMIKO = True
+except ImportError:
+    HAS_PARAMIKO = False
+
 COLORS = {
     "emergency": "\033[91;1m",
     "alert":     "\033[91m",
@@ -464,6 +470,170 @@ class LlmLogIngester:
             print(f"  Ingest errors    : {COLORS['error']}{self._errors}{COLORS['reset']}")
 
 
+class AutoResponsePoller:
+    """
+    Polls the SOC API for pending auto-response commands and executes them
+    via SSH on the target device. Retries each command up to 3 times before
+    marking it failed and letting the API notify analysts.
+    """
+
+    POLL_INTERVAL = 5  # seconds between polls
+    MAX_RETRIES = 3
+    RETRY_DELAY = 5    # seconds between retries
+
+    def __init__(self, api_url: str, workspace_id: str, use_color: bool = True):
+        self.api_url = api_url.rstrip("/")
+        self.workspace_id = workspace_id
+        self.use_color = use_color
+        self._running = True
+        self._thread = threading.Thread(target=self._poll_loop, daemon=True)
+
+    def start(self):
+        if not HAS_PARAMIKO:
+            print(
+                f"{self._c('warning')}  WARNING: paramiko not installed — "
+                f"auto-response SSH execution disabled{self._c('reset')}",
+                file=sys.stderr, flush=True,
+            )
+            return
+        self._thread.start()
+        print(
+            f"{self._c('success')}  Auto-response SSH poller started "
+            f"(workspace: {self.workspace_id}){self._c('reset')}",
+            flush=True,
+        )
+
+    def stop(self):
+        self._running = False
+
+    def _c(self, key: str) -> str:
+        return COLORS.get(key, "") if self.use_color else ""
+
+    def _poll_loop(self):
+        while self._running:
+            try:
+                self._poll_once()
+            except Exception as e:
+                print(
+                    f"{self._c('error')}  Auto-response poll error: {e}{self._c('reset')}",
+                    file=sys.stderr, flush=True,
+                )
+            time.sleep(self.POLL_INTERVAL)
+
+    def _poll_once(self):
+        url = f"{self.api_url}/auto-response/pending?workspaceId={self.workspace_id}"
+        try:
+            req = urllib.request.Request(url, method="GET")
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+        except Exception as e:
+            print(
+                f"{self._c('warning')}  Auto-response poll failed: {e}{self._c('reset')}",
+                file=sys.stderr, flush=True,
+            )
+            return
+
+        commands = data.get("commands", [])
+        device = data.get("device")
+        if not commands or not device:
+            return
+
+        print(
+            f"{self._c('info')}  Auto-response: {len(commands)} pending command(s) "
+            f"for device {device.get('host')}{self._c('reset')}",
+            flush=True,
+        )
+
+        for cmd in commands:
+            self._execute_command(cmd, device)
+
+    def _execute_command(self, cmd: dict, device: dict):
+        cmd_id = cmd["id"]
+        command_str = cmd["command"]
+        cmd_type = cmd.get("type", "custom")
+        target = cmd.get("target", "")
+
+        print(
+            f"{self._c('info')}  Executing [{cmd_type}] on {target}: "
+            f"{command_str[:60]}...{self._c('reset')}",
+            flush=True,
+        )
+
+        # mark as running
+        self._patch_command(cmd_id, "running", None, 0)
+
+        output = None
+        success = False
+        retry_count = 0
+
+        for attempt in range(1, self.MAX_RETRIES + 1):
+            try:
+                output = self._ssh_exec(
+                    host=device["host"],
+                    port=device.get("port", 22),
+                    user=device["user"],
+                    password=device.get("password"),
+                    command=command_str,
+                )
+                success = True
+                retry_count = attempt - 1
+                print(
+                    f"{self._c('success')}  [{cmd_type}] succeeded "
+                    f"(attempt {attempt}){self._c('reset')}",
+                    flush=True,
+                )
+                break
+            except Exception as e:
+                output = str(e)
+                retry_count = attempt
+                print(
+                    f"{self._c('warning')}  [{cmd_type}] attempt {attempt} failed: "
+                    f"{e}{self._c('reset')}",
+                    file=sys.stderr, flush=True,
+                )
+                if attempt < self.MAX_RETRIES:
+                    time.sleep(self.RETRY_DELAY)
+
+        final_status = "success" if success else "failed"
+        self._patch_command(cmd_id, final_status, output, retry_count)
+
+    def _ssh_exec(self, host: str, port: int, user: str, password: str, command: str) -> str:
+        client = paramiko.SSHClient()
+        client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        try:
+            client.connect(
+                hostname=host,
+                port=port,
+                username=user,
+                password=password,
+                timeout=15,
+                look_for_keys=False,
+                allow_agent=False,
+            )
+            stdin, stdout, stderr = client.exec_command(command, timeout=30)
+            out = stdout.read().decode("utf-8", errors="replace")
+            err = stderr.read().decode("utf-8", errors="replace")
+            return (out + err).strip()
+        finally:
+            client.close()
+
+    def _patch_command(self, cmd_id: str, status: str, output: str | None, retry_count: int):
+        url = f"{self.api_url}/auto-response/commands/{cmd_id}"
+        body = json.dumps({"status": status, "output": output, "retryCount": retry_count}).encode("utf-8")
+        try:
+            req = urllib.request.Request(
+                url, data=body,
+                headers={"Content-Type": "application/json"},
+                method="PATCH",
+            )
+            urllib.request.urlopen(req, timeout=10)
+        except Exception as e:
+            print(
+                f"{self._c('error')}  Failed to patch command {cmd_id}: {e}{self._c('reset')}",
+                file=sys.stderr, flush=True,
+            )
+
+
 class SyslogHandler(socketserver.BaseRequestHandler):
 
     def handle(self):
@@ -622,6 +792,7 @@ Examples:
     args = parser.parse_args()
     log_file = None
     ingester = None
+    poller = None
 
     if args.output:
         log_file = open(args.output, "a", encoding="utf-8")
@@ -642,6 +813,12 @@ Examples:
             llm_model=args.llm_model,
             max_pending=args.max_pending,
         )
+        poller = AutoResponsePoller(
+            api_url=args.api_url,
+            workspace_id=args.workspace_id,
+            use_color=not args.no_color,
+        )
+        poller.start()
 
     print_banner(
         args.host, args.port, args.log_filter, args.output,
@@ -661,6 +838,8 @@ Examples:
 
     def shutdown(sig, frame):
         print(f"\n\n{COLORS['warning']}Shutting down...{COLORS['reset']}")
+        if poller:
+            poller.stop()
         if ingester:
             ingester.stop()
         print_stats_report(ingester)

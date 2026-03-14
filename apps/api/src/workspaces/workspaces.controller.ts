@@ -1,8 +1,8 @@
-import { Controller, Get, Post, Body, Param, UseGuards, HttpException, HttpStatus } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Body, Param, UseGuards, HttpException, HttpStatus } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthGuard } from '../common/guards/auth.guard';
 import { AdminGuard } from '../common/guards/admin.guard';
-import type { CreateWorkspaceDto } from '@soc/shared';
+import type { CreateWorkspaceDto, UpdateDeviceConfigDto } from '@soc/shared';
 
 @Controller('companies/:companyId/workspaces')
 @UseGuards(AuthGuard)
@@ -63,5 +63,28 @@ export class WorkspacesController {
     });
 
     return { data: workspace };
+  }
+
+  @Patch(':id/device-config')
+  @UseGuards(AdminGuard)
+  async updateDeviceConfig(
+    @Param('companyId') companyId: string,
+    @Param('id') id: string,
+    @Body() body: UpdateDeviceConfigDto,
+  ) {
+    const workspace = await this.prisma.workspace.findFirst({ where: { id, companyId } });
+    if (!workspace) throw new HttpException('Workspace not found', HttpStatus.NOT_FOUND);
+
+    const updated = await this.prisma.workspace.update({
+      where: { id },
+      data: {
+        deviceHost: body.deviceHost ?? workspace.deviceHost,
+        devicePort: body.devicePort ?? workspace.devicePort,
+        deviceUser: body.deviceUser ?? workspace.deviceUser,
+        devicePassword: body.devicePassword ?? workspace.devicePassword,
+      },
+    });
+
+    return { data: updated };
   }
 }

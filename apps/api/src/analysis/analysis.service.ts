@@ -3,6 +3,7 @@ import { Interval } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
 import { EventsGateway } from '../events/events.gateway';
 import { ReputationService } from '../reputation/reputation.service';
+import { AutoResponseService } from '../auto-response/auto-response.service';
 
 interface LlmMessage {
   role: 'system' | 'user' | 'assistant';
@@ -46,6 +47,7 @@ export class AnalysisService {
     private readonly prisma: PrismaService,
     private readonly events: EventsGateway,
     private readonly reputation: ReputationService,
+    private readonly autoResponse: AutoResponseService,
   ) {}
 
   @Interval(ANALYSIS_INTERVAL_MS)
@@ -278,6 +280,9 @@ INSTRUCTIONS:
 
         this.events.emitAlertCreated({ alertId: created.id, workspaceId });
         this.logger.log(`Alert created: [${severity}] ${alert.title}`);
+
+        // fire-and-forget — don't block the transaction
+        void this.autoResponse.generate(created.id, workspaceId);
       }
 
       await tx.log.updateMany({

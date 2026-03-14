@@ -105,12 +105,17 @@ model Workspace {
   name                String
   description         String?
   autoResponseEnabled Boolean  @default(false)
+  deviceHost          String?
+  devicePort          Int?     @default(22)
+  deviceUser          String?
+  devicePassword      String?
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
 
-  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  logs    Log[]
-  alerts  Alert[]
+  company       Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  logs          Log[]
+  alerts        Alert[]
+  autoResponses AutoResponse[]
 
   @@map("workspaces")
 }
@@ -166,11 +171,50 @@ model Alert {
   activities    AlertActivity[]
   notes         AlertNote[]
   notifications Notification[]
+  autoResponse  AutoResponse?
 
   @@index([workspaceId, status])
   @@index([assigneeId])
   @@index([severity])
   @@map("alerts")
+}
+
+model AutoResponse {
+  id          String   @id @default(cuid())
+  alertId     String   @unique
+  workspaceId String
+  vendor      String
+  reasoning   String
+  status      String   @default("pending") // pending | executing | completed | failed | recommended
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  alert     Alert                @relation(fields: [alertId], references: [id], onDelete: Cascade)
+  workspace Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  commands  AutoResponseCommand[]
+
+  @@index([workspaceId, status])
+  @@map("auto_responses")
+}
+
+model AutoResponseCommand {
+  id             String    @id @default(cuid())
+  autoResponseId String
+  type           String    // block_ip | rate_limit | disable_user | isolate_host | custom
+  target         String
+  command        String
+  reasoning      String
+  priority       Int       @default(0)
+  status         String    @default("pending") // pending | running | success | failed | skipped
+  retryCount     Int       @default(0)
+  output         String?
+  executedAt     DateTime?
+  createdAt      DateTime  @default(now())
+
+  autoResponse AutoResponse @relation(fields: [autoResponseId], references: [id], onDelete: Cascade)
+
+  @@index([autoResponseId, priority])
+  @@map("auto_response_commands")
 }
 
 model AlertActivity {

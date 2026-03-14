@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { authClient } from "@/lib/auth-client";
 import {
   ChartContainer,
   ChartTooltip,
@@ -28,7 +29,9 @@ import {
   ChevronLeft,
   ChevronRight,
   ArrowUpDown,
+  Server,
 } from "lucide-react";
+import { toast } from "sonner";
 import api from "@/lib/api";
 import { useWorkspaceSocket } from "@/lib/socket";
 import { IpBadge } from "@/components/ip-badge";
@@ -96,6 +99,8 @@ export default function WorkspacePage({
   params: Promise<{ id: string; wsId: string }>;
 }) {
   const { id, wsId } = use(params);
+  const { data: session } = authClient.useSession();
+  const isAdmin = (session?.user as any)?.role === "admin";
   const [workspace, setWorkspace] = useState<WorkspaceDetailDto | null>(null);
   const [logs, setLogs] = useState<LogDto[]>([]);
   const [meta, setMeta] = useState<PaginationMeta | null>(null);
@@ -110,6 +115,13 @@ export default function WorkspacePage({
   const [action, setAction] = useState("");
   const [timeRange, setTimeRange] = useState("");
   const [sortDir, setSortDir] = useState<"desc" | "asc">("desc");
+
+  // device config form state (admin only)
+  const [deviceHost, setDeviceHost] = useState("");
+  const [devicePort, setDevicePort] = useState("22");
+  const [deviceUser, setDeviceUser] = useState("");
+  const [devicePassword, setDevicePassword] = useState("");
+  const [deviceSaving, setDeviceSaving] = useState(false);
 
   const TIME_RANGES = [
     { label: "1h", seconds: 3600 },
@@ -127,10 +139,34 @@ export default function WorkspacePage({
 
   useEffect(() => {
     api.get(`/companies/${id}/workspaces/${wsId}`)
-      .then(({ data: json }) => setWorkspace(json.data))
+      .then(({ data: json }) => {
+        const ws = json.data;
+        setWorkspace(ws);
+        setDeviceHost(ws.deviceHost || "");
+        setDevicePort(String(ws.devicePort || 22));
+        setDeviceUser(ws.deviceUser || "");
+      })
       .catch(() => {});
     refreshStats();
   }, [id, wsId, refreshStats]);
+
+  const saveDeviceConfig = async () => {
+    setDeviceSaving(true);
+    try {
+      await api.patch(`/companies/${id}/workspaces/${wsId}/device-config`, {
+        deviceHost: deviceHost || null,
+        devicePort: devicePort ? parseInt(devicePort) : null,
+        deviceUser: deviceUser || null,
+        devicePassword: devicePassword || null,
+      });
+      toast.success("Device config saved");
+      setDevicePassword("");
+    } catch {
+      // interceptor handles
+    } finally {
+      setDeviceSaving(false);
+    }
+  };
 
   const fetchLogs = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
@@ -557,6 +593,75 @@ export default function WorkspacePage({
             </Button>
           </div>
         </div>
+      )}
+
+      {/* Device config — admin only */}
+      {isAdmin && (
+        <Card>
+          <CardHeader className="p-4 pb-2">
+            <CardTitle className="text-sm font-medium flex items-center gap-2">
+              <Server className="size-3.5 text-muted-foreground" />
+              Device Config
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-4 pt-2 space-y-3">
+            <p className="text-xs text-muted-foreground">
+              SSH credentials for the device sending logs to this workspace. Used by the auto-response system to execute containment commands.
+            </p>
+            <p className="text-[11px] text-yellow-400/80 bg-yellow-400/5 border border-yellow-400/15 rounded px-2 py-1.5">
+              Credentials are stored unencrypted. Restrict access to this workspace accordingly.
+            </p>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <label className="text-xs text-muted-foreground">Host / IP</label>
+                <Input
+                  className="h-8 text-xs font-mono"
+                  placeholder="192.168.1.1"
+                  value={deviceHost}
+                  onChange={(e) => setDeviceHost(e.target.value)}
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs text-muted-foreground">Port</label>
+                <Input
+                  className="h-8 text-xs font-mono"
+                  placeholder="22"
+                  value={devicePort}
+                  onChange={(e) => setDevicePort(e.target.value)}
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs text-muted-foreground">Username</label>
+                <Input
+                  className="h-8 text-xs font-mono"
+                  placeholder="admin"
+                  value={deviceUser}
+                  onChange={(e) => setDeviceUser(e.target.value)}
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs text-muted-foreground">Password</label>
+                <Input
+                  type="password"
+                  className="h-8 text-xs"
+                  placeholder={workspace?.deviceHost ? "Leave blank to keep current" : ""}
+                  value={devicePassword}
+                  onChange={(e) => setDevicePassword(e.target.value)}
+                />
+              </div>
+            </div>
+            <div className="flex justify-end">
+              <Button
+                size="sm"
+                className="h-8 text-xs"
+                disabled={deviceSaving}
+                onClick={saveDeviceConfig}
+              >
+                {deviceSaving ? "Saving..." : "Save"}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
       )}
     </div>
   );

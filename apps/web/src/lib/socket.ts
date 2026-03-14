@@ -23,6 +23,7 @@ export interface SocketHandlers {
   onLogsCleared?: (payload: { workspaceId: string; deleted: number }) => void;
   onAlertCreated?: (payload: { alertId: string; workspaceId: string }) => void;
   onAlertUpdated?: (payload: { alertId: string; workspaceId: string }) => void;
+  onAutoResponseUpdated?: (payload: { alertId: string; workspaceId: string }) => void;
 }
 
 // joins a workspace room and listens for scoped events
@@ -61,7 +62,7 @@ export function useWorkspaceSocket(
 
 // listens for broadcast events (not room-scoped), for dashboard/company pages
 export function useGlobalSocket(
-  handlers: Pick<SocketHandlers, "onLogsIngested" | "onLogsCleared" | "onAlertCreated" | "onAlertUpdated">,
+  handlers: Pick<SocketHandlers, "onLogsIngested" | "onLogsCleared" | "onAlertCreated" | "onAlertUpdated" | "onAutoResponseUpdated">,
 ) {
   const handlersRef = useRef(handlers);
   handlersRef.current = handlers;
@@ -73,17 +74,20 @@ export function useGlobalSocket(
     const onCleared = (p: any) => handlersRef.current.onLogsCleared?.(p);
     const onAlertCreated = (p: any) => handlersRef.current.onAlertCreated?.(p);
     const onAlertUpdated = (p: any) => handlersRef.current.onAlertUpdated?.(p);
+    const onAutoResponseUpdated = (p: any) => handlersRef.current.onAutoResponseUpdated?.(p);
 
     s.on(WS_EVENTS.LOGS_INGESTED, onIngested);
     s.on(WS_EVENTS.LOGS_CLEARED, onCleared);
     s.on(WS_EVENTS.ALERT_CREATED, onAlertCreated);
     s.on(WS_EVENTS.ALERT_UPDATED, onAlertUpdated);
+    s.on(WS_EVENTS.AUTO_RESPONSE_UPDATED, onAutoResponseUpdated);
 
     return () => {
       s.off(WS_EVENTS.LOGS_INGESTED, onIngested);
       s.off(WS_EVENTS.LOGS_CLEARED, onCleared);
       s.off(WS_EVENTS.ALERT_CREATED, onAlertCreated);
       s.off(WS_EVENTS.ALERT_UPDATED, onAlertUpdated);
+      s.off(WS_EVENTS.AUTO_RESPONSE_UPDATED, onAutoResponseUpdated);
     };
   }, []);
 }

@@ -15,8 +15,14 @@ export type UserRole = (typeof USER_ROLES)[number];
 export const ALERT_STATUSES = ['open', 'acknowledged', 'investigating', 'resolved'] as const;
 export type AlertStatus = (typeof ALERT_STATUSES)[number];
 
-export const AUTO_RESPONSE_STATUSES = ['proposed', 'approved', 'executed', 'rejected'] as const;
+export const AUTO_RESPONSE_STATUSES = ['pending', 'executing', 'completed', 'failed', 'recommended'] as const;
 export type AutoResponseStatus = (typeof AUTO_RESPONSE_STATUSES)[number];
+
+export const AUTO_RESPONSE_COMMAND_STATUSES = ['pending', 'running', 'success', 'failed', 'skipped'] as const;
+export type AutoResponseCommandStatus = (typeof AUTO_RESPONSE_COMMAND_STATUSES)[number];
+
+export const AUTO_RESPONSE_COMMAND_TYPES = ['block_ip', 'rate_limit', 'disable_user', 'isolate_host', 'custom'] as const;
+export type AutoResponseCommandType = (typeof AUTO_RESPONSE_COMMAND_TYPES)[number];
 
 // ── Generic API envelope ─────────────────────────────────────
 
@@ -88,6 +94,9 @@ export interface WorkspaceDto {
   name: string;
   description: string | null;
   autoResponseEnabled: boolean;
+  deviceHost: string | null;
+  devicePort: number | null;
+  deviceUser: string | null;
   createdAt: string;
 }
 
@@ -98,6 +107,13 @@ export interface WorkspaceDetailDto extends WorkspaceDto {
 export interface CreateWorkspaceDto {
   name: string;
   description?: string;
+}
+
+export interface UpdateDeviceConfigDto {
+  deviceHost?: string | null;
+  devicePort?: number | null;
+  deviceUser?: string | null;
+  devicePassword?: string | null;
 }
 
 // ── Log DTOs ─────────────────────────────────────────────────
@@ -225,6 +241,35 @@ export interface AlertActivityDto {
   };
 }
 
+// ── AutoResponse DTOs ───────────────────────────────────────
+
+export interface AutoResponseCommandDto {
+  id: string;
+  autoResponseId: string;
+  type: string;
+  target: string;
+  command: string;
+  reasoning: string;
+  priority: number;
+  status: string;
+  retryCount: number;
+  output: string | null;
+  executedAt: string | null;
+  createdAt: string;
+}
+
+export interface AutoResponseDto {
+  id: string;
+  alertId: string;
+  workspaceId: string;
+  vendor: string;
+  reasoning: string;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+  commands: AutoResponseCommandDto[];
+}
+
 // ── Dashboard DTOs ──────────────────────────────────────────
 
 export interface DashboardStatsDto {
@@ -289,6 +334,7 @@ export const WS_EVENTS = {
   ALERT_UPDATED: 'alert:updated',
   JOIN_USER: 'user:join',
   NOTIFICATION_NEW: 'notification:new',
+  AUTO_RESPONSE_UPDATED: 'auto_response:updated',
 } as const;
 
 export interface WsAlertPayload {

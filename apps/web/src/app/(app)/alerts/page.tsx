@@ -17,13 +17,24 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Shield, ChevronLeft, ChevronRight, UserCheck, Clock, Activity, Send, Pencil, Trash2, Check, X } from "lucide-react";
+import { Shield, ChevronLeft, ChevronRight, UserCheck, Clock, Activity, Send, Pencil, Trash2, Check, X, Terminal, Zap } from "lucide-react";
 import { toast } from "sonner";
 import api from "@/lib/api";
 import { useGlobalSocket } from "@/lib/socket";
 import { authClient } from "@/lib/auth-client";
 import { IpBadge } from "@/components/ip-badge";
-import type { AlertDto, AlertStatsDto, AlertActivityDto, AlertNoteDto, UserDto, PaginationMeta } from "@soc/shared";
+import type { AlertDto, AlertStatsDto, AlertActivityDto, AlertNoteDto, UserDto, PaginationMeta, AutoResponseDto } from "@soc/shared";
+
+const arStatusColors: Record<string, string> = {
+  pending: "text-yellow-400 bg-yellow-400/10",
+  executing: "text-blue-400 bg-blue-400/10",
+  completed: "text-emerald-400 bg-emerald-400/10",
+  failed: "text-red-400 bg-red-400/10",
+  recommended: "text-zinc-300 bg-zinc-400/10",
+  success: "text-emerald-400 bg-emerald-400/10",
+  running: "text-blue-400 bg-blue-400/10",
+  skipped: "text-zinc-500 bg-zinc-500/10",
+};
 
 const severityColors: Record<string, string> = {
   critical: "text-red-400 border-red-400/30 bg-red-400/10",
@@ -84,6 +95,7 @@ export default function AlertsPage() {
   const [noteSending, setNoteSending] = useState(false);
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
   const [editingNoteText, setEditingNoteText] = useState("");
+  const [autoResponse, setAutoResponse] = useState<AutoResponseDto | null>(null);
 
   // alert filters
   const [viewTab, setViewTab] = useState<ViewTab>(isAdmin ? "unassigned" : "mine");
@@ -194,12 +206,23 @@ export default function AlertsPage() {
     }
   };
 
-  // load notes when an alert is selected
+  const fetchAutoResponse = useCallback(async (alertId: string) => {
+    try {
+      const { data: json } = await api.get(`/auto-response/alert/${alertId}`);
+      setAutoResponse(json.data ?? null);
+    } catch {
+      setAutoResponse(null);
+    }
+  }, []);
+
+  // load notes + auto-response when an alert is selected
   useEffect(() => {
     if (selectedAlert) {
       setNotes([]);
       setNoteText("");
+      setAutoResponse(null);
       fetchNotes(selectedAlert.id);
+      fetchAutoResponse(selectedAlert.id);
     }
   }, [selectedAlert?.id]);
 
@@ -213,6 +236,11 @@ export default function AlertsPage() {
     onAlertUpdated: () => {
       fetchAlerts();
       fetchStats();
+    },
+    onAutoResponseUpdated: (payload: { alertId: string }) => {
+      if (selectedAlert?.id === payload.alertId) {
+        fetchAutoResponse(payload.alertId);
+      }
     },
   });
 
@@ -864,6 +892,61 @@ export default function AlertsPage() {
                     </Button>
                   </div>
                 </div>
+
+                {/* auto response */}
+                {autoResponse && (
+                  <div className="border-t border-border pt-4">
+                    <div className="flex items-center gap-2 mb-3">
+                      {autoResponse.status === "recommended" ? (
+                        <Zap className="size-3.5 text-yellow-400" />
+                      ) : (
+                        <Terminal className="size-3.5 text-blue-400" />
+                      )}
+                      <span className="text-xs text-muted-foreground font-medium">
+                        {autoResponse.status === "recommended" ? "Recommended Actions" : "Auto Response"}
+                      </span>
+                      <span className={`ml-auto text-[10px] px-1.5 py-0.5 rounded font-medium ${arStatusColors[autoResponse.status] || ""}`}>
+                        {autoResponse.status}
+                      </span>
+                    </div>
+
+                    {autoResponse.status === "recommended" && (
+                      <p className="text-[11px] text-muted-foreground mb-3 bg-yellow-400/5 border border-yellow-400/20 rounded px-2 py-1.5">
+                        Auto-execute is disabled for this workspace. Enable it in workspace settings to run these automatically.
+                      </p>
+                    )}
+
+                    <p className="text-xs text-muted-foreground mb-3 italic">{autoResponse.reasoning}</p>
+
+                    <div className="space-y-2">
+                      {autoResponse.commands.map((cmd) => (
+                        <div key={cmd.id} className="bg-secondary/20 rounded-md p-2.5 space-y-1.5">
+                          <div className="flex items-center gap-2">
+                            <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">
+                              {cmd.type.replace(/_/g, " ")}
+                            </span>
+                            <span className="text-[10px] font-mono text-foreground/70">{cmd.target}</span>
+                            <span className={`ml-auto text-[10px] px-1.5 py-0.5 rounded font-medium ${arStatusColors[cmd.status] || ""}`}>
+                              {cmd.status}
+                            </span>
+                            {cmd.retryCount > 0 && (
+                              <span className="text-[10px] text-muted-foreground">{cmd.retryCount} retries</span>
+                            )}
+                          </div>
+                          <pre className="text-[10px] font-mono bg-black/20 rounded px-2 py-1.5 overflow-x-auto whitespace-pre-wrap text-muted-foreground">
+                            {cmd.command}
+                          </pre>
+                          {cmd.output && (
+                            <pre className={`text-[10px] font-mono rounded px-2 py-1.5 overflow-x-auto whitespace-pre-wrap ${cmd.status === "success" ? "bg-emerald-500/5 text-emerald-400/80" : "bg-red-500/5 text-red-400/80"}`}>
+                              {cmd.output}
+                            </pre>
+                          )}
+                          <p className="text-[10px] text-muted-foreground/60">{cmd.reasoning}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             </>
           )}

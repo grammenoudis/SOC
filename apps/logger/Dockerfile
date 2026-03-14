@@ -1,4 +1,5 @@
 FROM python:3.12-alpine
+RUN pip install --no-cache-dir paramiko
 WORKDIR /app
 COPY apps/logger/main.py .
 COPY apps/logger/entrypoint.sh /entrypoint.sh

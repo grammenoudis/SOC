@@ -77,4 +77,9 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   emitNotification(payload: WsNotificationPayload) {
     this.server.to(`user:${payload.userId}`).emit(WS_EVENTS.NOTIFICATION_NEW, payload.notification);
   }
+
+  emitAutoResponseUpdated(workspaceId: string, alertId: string) {
+    this.server.to(`workspace:${workspaceId}`).emit(WS_EVENTS.AUTO_RESPONSE_UPDATED, { workspaceId, alertId });
+    this.server.emit(WS_EVENTS.AUTO_RESPONSE_UPDATED, { workspaceId, alertId });
+  }
 }

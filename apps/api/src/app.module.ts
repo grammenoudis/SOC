@@ -17,9 +17,10 @@ import { UsageModule } from './usage/usage.module';
 import { AnalysisModule } from './analysis/analysis.module';
 import { ReportsModule } from './reports/reports.module';
 import { ReputationModule } from './reputation/reputation.module';
+import { AutoResponseModule } from './auto-response/auto-response.module';
 
 @Module({
-  imports: [PrismaModule, EventsModule, UsersModule, FavoritesModule, CompaniesModule, WorkspacesModule, LogsModule, ChatModule, AlertsModule, NotificationsModule, RulesModule, DashboardModule, UsageModule, AnalysisModule, ReportsModule, ReputationModule],
+  imports: [PrismaModule, EventsModule, UsersModule, FavoritesModule, CompaniesModule, WorkspacesModule, LogsModule, ChatModule, AlertsModule, NotificationsModule, RulesModule, DashboardModule, UsageModule, AnalysisModule, ReportsModule, ReputationModule, AutoResponseModule],
   controllers: [AppController],
   providers: [AppService],
 })

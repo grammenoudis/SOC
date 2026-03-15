@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """
-FortiGate Real-Time Log Listener (Syslog Server)
+SOC Syslog Listener — Multi-Vendor Log Collector
 
-Receives syslog from a FortiGate firewall, buffers raw messages, and
-periodically sends them to an LLM for structured parsing before forwarding
-to the SOC platform's ingest API.
+Receives syslog from network devices (FortiGate, Cisco, Palo Alto, Check Point,
+Juniper, etc.), buffers raw messages, and periodically sends them to an LLM for
+vendor-agnostic structured parsing before forwarding to the SOC platform's
+ingest API.
 
 Trigger conditions (whichever fires first):
   - Buffer reaches --batch-size logs (default: 10)
@@ -12,25 +13,7 @@ Trigger conditions (whichever fires first):
 
 Burst protection: a bounded queue (--max-pending, default: 5) decouples
 buffering from the single LLM worker thread. If the queue is full, the
-batch falls back to regex parsing and is sent directly — no logs are dropped.
-
-SETUP ON FORTIGATE (CLI):
-    config log syslogd setting
-        set status enable
-        set server 192.168.1.3
-        set port 514
-        set facility local7
-        set format default
-    end
-
-    config log syslogd filter
-        set severity information
-        set forward-traffic enable
-        set local-traffic enable
-        set multicast-traffic enable
-        set anomaly enable
-        set voip enable
-    end
+batch is dropped — no threads block.
 
 USAGE:
     # Listen only (no ingestion):
@@ -83,187 +66,84 @@ COLORS = {
 
 stats = defaultdict(int)
 
-# # map FortiGate level names to our severity enum
-# LEVEL_TO_SEVERITY = {
-#     "emergency": "critical",
-#     "alert": "critical",
-#     "critical": "critical",
-#     "error": "high",
-#     "warning": "medium",
-#     "notice": "low",
-#     "information": "low",
-#     "debug": "unknown",
-# }
 
-# # IANA protocol numbers
-# PROTO_MAP = {
-#     "1": "icmp",
-#     "6": "tcp",
-#     "17": "udp",
-#     "47": "gre",
-#     "50": "esp",
-#     "51": "ah",
-#     "58": "icmpv6",
-#     "89": "ospf",
-# }
-
-
-def parse_fortigate_log(raw_message: str) -> dict:
-    """Parse a FortiGate syslog message into key-value pairs."""
-    fields = {}
-    pattern = r'(\w+)=(?:"([^"]*?)"|(\S+))'
-    for match in re.finditer(pattern, raw_message):
-        key = match.group(1)
-        value = match.group(2) if match.group(2) is not None else match.group(3)
-        fields[key] = value
-    return fields
-
-
-# def fortigate_to_ingest(fields: dict, workspace_id: str, raw_message: str) -> dict:
-#     """Convert parsed FortiGate fields to the /logs/ingest payload format (regex fallback)."""
-#     eventtime = fields.get("eventtime", "")
-#     if eventtime and len(eventtime) > 10:
-#         timestamp = int(eventtime[:10])
-#     elif eventtime:
-#         timestamp = int(eventtime)
-#     else:
-#         timestamp = int(time.time())
-#
-#     level = fields.get("crlevel", fields.get("level", "")).lower()
-#     severity = LEVEL_TO_SEVERITY.get(level, "unknown")
-#
-#     proto_raw = fields.get("proto", "")
-#     protocol = PROTO_MAP.get(proto_raw, proto_raw) if proto_raw else None
-#
-#     srcport = fields.get("srcport")
-#     dstport = fields.get("dstport")
-#
-#     return {
-#         "workspaceId": workspace_id,
-#         "timestamp": timestamp,
-#         "severity": severity,
-#         "vendor": "fortigate",
-#         "eventType": fields.get("type", "unknown"),
-#         "action": fields.get("action") or None,
-#         "application": fields.get("app", fields.get("service")) or None,
-#         "protocol": protocol,
-#         "policy": fields.get("policyid") or None,
-#         "sourceIp": fields.get("srcip") or None,
-#         "sourcePort": int(srcport) if srcport and srcport.isdigit() else None,
-#         "destinationIp": fields.get("dstip") or None,
-#         "destinationPort": int(dstport) if dstport and dstport.isdigit() else None,
-#         "srcCountry": fields.get("srccountry") or None,
-#         "dstCountry": fields.get("dstcountry") or None,
-#         "rawLog": raw_message,
-#     }
-
-
-def get_severity_color(fields: dict) -> str:
-    log_type = fields.get("type", "").lower()
-    level = fields.get("level", fields.get("pri", "")).lower()
-
-    if level in ("emergency", "alert", "critical"):
-        return COLORS["critical"]
-    elif level == "error":
+def _guess_color(raw_message: str) -> str:
+    """Pick a color based on severity keywords in the raw message."""
+    lower = raw_message.lower()
+    for kw in ("emergency", "critical", "crit"):
+        if kw in lower:
+            return COLORS["critical"]
+    if "error" in lower or "err " in lower:
         return COLORS["error"]
-    elif level == "warning":
+    if "warning" in lower or "warn" in lower:
         return COLORS["warning"]
-    elif log_type == "traffic":
+    if "traffic" in lower:
         return COLORS["traffic"]
-    elif log_type == "event":
-        return COLORS["event"]
-    elif log_type == "utm":
+    if "threat" in lower or "utm" in lower:
         return COLORS["utm"]
-    elif level == "notice":
-        return COLORS["notice"]
-    else:
-        return COLORS["info"]
+    if "event" in lower:
+        return COLORS["event"]
+    return COLORS["info"]
 
 
 def format_log(raw_message: str, use_color: bool = True) -> str:
-    fields = parse_fortigate_log(raw_message)
+    """Display the raw syslog line with a timestamp and severity color."""
     reset = COLORS["reset"] if use_color else ""
     ts_color = COLORS["timestamp"] if use_color else ""
     now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    color = _guess_color(raw_message) if use_color else ""
 
-    if not fields:
-        return f"{ts_color}[{now}]{reset} {raw_message}"
+    stats["total"] += 1
 
-    color = get_severity_color(fields) if use_color else ""
-
-    log_type = fields.get("type", "unknown")
-    subtype = fields.get("subtype", "")
-    level = fields.get("level", fields.get("pri", ""))
-    action = fields.get("action", "")
-    msg = fields.get("msg", fields.get("message", ""))
-    srcip = fields.get("srcip", "")
-    dstip = fields.get("dstip", "")
-    srcport = fields.get("srcport", "")
-    dstport = fields.get("dstport", "")
-    proto = fields.get("proto", fields.get("service", ""))
-    policy = fields.get("policyid", "")
-    user = fields.get("user", fields.get("srcuser", ""))
-
-    stats[log_type] += 1
-    if level:
-        stats[f"level:{level}"] += 1
-
-    parts = [f"{ts_color}[{now}]{reset}"]
-    parts.append(f"{color}[{log_type.upper()}")
-    if subtype:
-        parts[-1] += f"/{subtype}"
-    parts[-1] += "]"
-    if level:
-        parts.append(f"[{level.upper()}]")
-    if action:
-        parts.append(f"action={action}")
-
-    if srcip and dstip:
-        flow = f"{srcip}"
-        if srcport:
-            flow += f":{srcport}"
-        flow += f" -> {dstip}"
-        if dstport:
-            flow += f":{dstport}"
-        if proto:
-            flow += f" ({proto})"
-        parts.append(flow)
-
-    if policy:
-        parts.append(f"policy={policy}")
-    if user:
-        parts.append(f"user={user}")
-    if msg:
-        parts.append(f'"{msg}"')
-
-    parts.append(reset)
-    return " ".join(parts)
+    # truncate very long lines for console readability
+    display = raw_message if len(raw_message) <= 300 else raw_message[:297] + "..."
+    return f"{ts_color}[{now}]{reset} {color}{display}{reset}"
 
 
-# LLM system prompt — tells the model exactly what to extract from raw FortiGate syslogs
+# LLM system prompt — vendor-agnostic syslog parser
 _LLM_SYSTEM_PROMPT = """\
-You are a FortiGate syslog parser. Given raw FortiGate syslog messages, extract structured \
-fields and return a JSON object with a "logs" array — one entry per input message.
+You are a multi-vendor syslog parser. Given raw syslog messages from ANY network device \
+(FortiGate, Cisco ASA/IOS, Palo Alto, Check Point, Juniper, Sophos, pfSense, Linux, \
+or any other vendor), extract structured fields and return a JSON object with a "logs" \
+array — one entry per input message.
 
-For each message extract:
+Auto-detect the vendor from the log format and field names. Common formats:
+- FortiGate: key=value pairs (type=, subtype=, level=, srcip=, dstip=, action=, etc.)
+- Cisco ASA: %ASA-severity-code: message (with IP/port patterns in the message body)
+- Cisco IOS: %FACILITY-severity-MNEMONIC: message
+- Palo Alto: comma-separated fields (TRAFFIC/THREAT/SYSTEM, src, dst, sport, dport, etc.)
+- Check Point: key=value or CEF format (src=, dst=, act=, etc.)
+- CEF: CEF:0|vendor|product|version|id|name|severity|key=value pairs
+- LEEF: LEEF:version|vendor|product|version|event|key=value pairs
+- Linux/syslog: standard syslog with facility.severity followed by process[pid]: message
+
+For each message extract these fields:
 - workspaceId: always use the workspace_id provided in the input
-- timestamp: integer unix epoch (from eventtime field, keep only first 10 digits; \
-fall back to current unix time if missing)
-- severity: map FortiGate level → "critical" (emergency/alert/critical), "high" (error), \
-"medium" (warning), "low" (notice/information), "unknown" (anything else or missing)
-- vendor: always "fortigate"
-- eventType: value of the 'type' field (e.g. traffic, threat, system, event)
-- action: 'action' field or null
-- application: 'app' field, fallback to 'service', or null
-- protocol: translate 'proto' numeric field (1→icmp, 6→tcp, 17→udp, 47→gre, 50→esp, \
-51→ah, 58→icmpv6, 89→ospf); if already a name keep it; null if missing
-- policy: 'policyid' field or null
-- sourceIp: 'srcip' field or null
-- sourcePort: 'srcport' as integer or null
-- destinationIp: 'dstip' field or null
-- destinationPort: 'dstport' as integer or null
-- srcCountry: 'srccountry' field or null
-- dstCountry: 'dstcountry' field or null
+- timestamp: integer unix epoch. Look for eventtime, timestamp, rt, start, or similar \
+fields. If the value has more than 10 digits, keep only the first 10. If a human-readable \
+date is found, convert to epoch. Fall back to current unix time if missing.
+- severity: normalize to one of: "critical", "high", "medium", "low", "unknown"
+  * critical: emergency, alert, critical, severity 1-2, or equivalent
+  * high: error, severity 3, or equivalent
+  * medium: warning, severity 4, or equivalent
+  * low: notice, informational, severity 5-6, or equivalent
+  * unknown: debug, severity 7, or if not determinable
+- vendor: detected vendor name in lowercase (e.g. "fortigate", "cisco_asa", "paloalto", \
+"checkpoint", "juniper", "linux", "sophos", "pfsense", etc.)
+- eventType: the log category (e.g. "traffic", "threat", "system", "event", "security", \
+"firewall", "vpn", "auth"). Normalize to lowercase.
+- action: the action taken (e.g. "allow", "deny", "drop", "accept", "reject", "close", \
+"login", "logout") or null
+- application: application or service name, or null
+- protocol: normalize to lowercase name (e.g. "tcp", "udp", "icmp"). Translate numeric \
+protocol numbers (6→tcp, 17→udp, 1→icmp, etc.). Null if missing.
+- policy: policy/rule ID or name, or null
+- sourceIp: source IP address, or null
+- sourcePort: source port as integer, or null
+- destinationIp: destination IP address, or null
+- destinationPort: destination port as integer, or null
+- srcCountry: source country if present, or null
+- dstCountry: destination country if present, or null
 - rawLog: the original raw log string, verbatim
 
 Return ONLY valid JSON in this exact shape: {"logs": [...]}
@@ -420,15 +300,6 @@ class LlmLogIngester:
 
         return logs
 
-    # def _fallback_send(self, raw_logs: list[str]):
-    #     """Regex-parse and send directly, bypassing the LLM."""
-    #     batch = []
-    #     for raw in raw_logs:
-    #         fields = parse_fortigate_log(raw)
-    #         if fields:
-    #             batch.append(fortigate_to_ingest(fields, self.workspace_id, raw))
-    #     self._send(batch)
-
     def _send(self, batch: list[dict]):
         if not batch:
             return
@@ -440,7 +311,7 @@ class LlmLogIngester:
             method="POST",
         )
         try:
-            with urllib.request.urlopen(req, timeout=10) as resp:
+            with urllib.request.urlopen(req, timeout=10):
                 self._sent += len(batch)
                 print(
                     f"{COLORS['success']}  Ingested {len(batch)} log(s) to API{COLORS['reset']}",
@@ -700,7 +571,7 @@ def print_banner(host: str, port: int, log_filter: str, output_file: str,
 
     print(f"""
 {COLORS['header']}╔══════════════════════════════════════════════════════════╗
-║          FortiGate Real-Time Log Listener                ║
+║          SOC Syslog Listener — Multi-Vendor              ║
 ╚══════════════════════════════════════════════════════════╝{COLORS['reset']}
 
   Listening on : {COLORS['info']}{host}:{port}{COLORS['reset']}
@@ -723,22 +594,7 @@ def print_stats_report(ingester=None):
     print(f"  Log Statistics")
     print(f"{'─' * 58}{COLORS['reset']}")
 
-    total = sum(v for k, v in stats.items() if not k.startswith("level:"))
-    type_stats = {k: v for k, v in stats.items() if not k.startswith("level:")}
-    level_stats = {k.replace("level:", ""): v for k, v in stats.items() if k.startswith("level:")}
-
-    if type_stats:
-        print(f"\n  By Type:")
-        for log_type, count in sorted(type_stats.items(), key=lambda x: -x[1]):
-            bar = "█" * min(count, 40)
-            print(f"    {log_type:<15} {count:>6}  {COLORS['info']}{bar}{COLORS['reset']}")
-
-    if level_stats:
-        print(f"\n  By Severity:")
-        for level, count in sorted(level_stats.items(), key=lambda x: -x[1]):
-            print(f"    {level:<15} {count:>6}")
-
-    print(f"\n  {COLORS['header']}Total logs received: {total}{COLORS['reset']}")
+    print(f"\n  {COLORS['header']}Total logs received: {stats.get('total', 0)}{COLORS['reset']}")
 
     if ingester:
         ingester.print_stats()
@@ -748,7 +604,7 @@ def print_stats_report(ingester=None):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="FortiGate Real-Time Log Listener with LLM-powered SOC ingestion",
+        description="SOC Syslog Listener — Multi-vendor log collection with LLM-powered parsing",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:

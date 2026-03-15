@@ -60,7 +60,7 @@ services:
       API_URL: http://api:3001
       # Set LOGGER_WORKSPACE_ID to a workspace ID from the web UI to enable ingestion.
       # Leave empty to run in listen-only mode (prints received syslogs, no forwarding).
-      LOGGER_WORKSPACE_ID: ${LOGGER_WORKSPACE_ID:-ws-techvault-prod-aws-001}
+      LOGGER_WORKSPACE_ID: ${LOGGER_WORKSPACE_ID:-ws-testing-facility-001}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       LOGGER_LLM_MODEL: ${LOGGER_LLM_MODEL:-gpt-4.1-mini}
       LOGGER_BATCH_SIZE: ${LOGGER_BATCH_SIZE:-10}

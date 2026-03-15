@@ -78,11 +78,6 @@ const TOOLS = [
             type: 'object',
             description: 'Sort order. Default: { "timestamp": "desc" }',
           },
-          take: {
-            type: 'number',
-            description:
-              'Max logs to return. Only set if the user asked for a specific number. Omit to let the system decide.',
-          },
         },
         required: ['where'],
       },
@@ -105,7 +100,6 @@ const TOOLS = [
           unassigned:   { type: 'boolean', description: 'If true, return only alerts with no assignee' },
           from:         { type: 'number', description: 'Unix timestamp — alerts created after this time' },
           to:           { type: 'number', description: 'Unix timestamp — alerts created before this time' },
-          take:         { type: 'number', description: 'Max alerts to return (default 50)' },
         },
       },
     },
@@ -197,7 +191,6 @@ const TOOLS = [
           companyId: { type: 'string', description: 'Filter by company ID' },
           userId:    { type: 'string', description: 'Filter by user ID' },
           purpose:   { type: 'string', description: 'Filter by purpose: query, answer, title, auto_response' },
-          take:      { type: 'number', description: 'Max records to return (default 100)' },
         },
       },
     },
@@ -577,24 +570,25 @@ GUIDELINES:
   }
 
   private async toolSearchLogs(args: any, scope: ScopeConstraints) {
-    const { where = {}, orderBy = { timestamp: 'desc' }, take } = args;
+    const { where = {}, orderBy = { timestamp: 'desc' } } = args;
     this.injectLogScope(where, scope);
 
-    const logs = await this.prisma.log.findMany({
-      where,
-      orderBy,
-      ...(take ? { take: Math.min(take, 2000) } : { take: 500 }),
-      select: {
-        id: true, timestamp: true, severity: true, vendor: true, eventType: true,
-        action: true, application: true, protocol: true, policy: true,
-        sourceIp: true, sourcePort: true, destinationIp: true, destinationPort: true,
-        srcCountry: true, dstCountry: true, rawLog: true,
-        workspace: { select: { id: true, name: true, company: { select: { id: true, name: true } } } },
-      },
-    });
+    const [totalCount, logs] = await Promise.all([
+      this.prisma.log.count({ where }),
+      this.prisma.log.findMany({
+        where,
+        orderBy,
+        select: {
+          id: true, timestamp: true, severity: true, vendor: true, eventType: true,
+          action: true, application: true, protocol: true, policy: true,
+          sourceIp: true, sourcePort: true, destinationIp: true, destinationPort: true,
+          srcCountry: true, dstCountry: true, rawLog: true,
+          workspace: { select: { id: true, name: true, company: { select: { id: true, name: true } } } },
+        },
+      }),
+    ]);
 
-    // Aggregate summary + sample to keep response size manageable
-    const total = logs.length;
+    const total = totalCount;
     const bySeverity: Record<string, number> = {};
     const byAction: Record<string, number> = {};
     const byVendor: Record<string, number> = {};
@@ -617,7 +611,7 @@ GUIDELINES:
     const topN = (map: Record<string, number>, n: number) =>
       Object.entries(map).sort((a, b) => b[1] - a[1]).slice(0, n).map(([k, v]) => ({ value: k, count: v }));
 
-    const sample = logs.slice(0, 60).map((l) => ({
+    const sample = logs.slice(0, 200).map((l) => ({
       id: l.id,
       time: new Date(l.timestamp * 1000).toISOString(),
       severity: l.severity,
@@ -651,7 +645,7 @@ GUIDELINES:
   }
 
   private async toolGetAlerts(args: any, scope: ScopeConstraints) {
-    const { status, severity, assigneeId, unassigned, from, to, take = 50 } = args;
+    const { status, severity, assigneeId, unassigned, from, to } = args;
     const where: any = {};
 
     this.injectAlertScope(where, args, scope);
@@ -666,16 +660,18 @@ GUIDELINES:
       if (to) where.createdAt.lte = new Date(to * 1000);
     }
 
-    const alerts = await this.prisma.alert.findMany({
-      where,
-      orderBy: { createdAt: 'desc' },
-      take: Math.min(take, 200),
-      include: {
-        workspace: { select: { id: true, name: true, company: { select: { id: true, name: true } } } },
-        assignee: { select: { id: true, name: true, email: true } },
-        _count: { select: { notes: true, activities: true } },
-      },
-    });
+    const [totalCount, alerts] = await Promise.all([
+      this.prisma.alert.count({ where }),
+      this.prisma.alert.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        include: {
+          workspace: { select: { id: true, name: true, company: { select: { id: true, name: true } } } },
+          assignee: { select: { id: true, name: true, email: true } },
+          _count: { select: { notes: true, activities: true } },
+        },
+      }),
+    ]);
 
     // Status/severity summary
     const byStatus: Record<string, number> = {};
@@ -687,7 +683,7 @@ GUIDELINES:
 
     return {
       data: {
-        total: alerts.length,
+        total: totalCount,
         byStatus,
         bySeverity,
         alerts: alerts.map((a) => ({
@@ -707,7 +703,7 @@ GUIDELINES:
           notesCount: (a as any)._count?.notes ?? 0,
         })),
       },
-      count: alerts.length,
+      count: totalCount,
     };
   }
 
@@ -864,7 +860,7 @@ GUIDELINES:
   }
 
   private async toolGetUsageStats(args: any) {
-    const { from, to, companyId, userId, purpose, take = 100 } = args;
+    const { from, to, companyId, userId, purpose } = args;
     const where: any = {};
     if (from || to) {
       where.createdAt = {};
@@ -878,7 +874,6 @@ GUIDELINES:
     const records = await this.prisma.llmUsage.findMany({
       where,
       orderBy: { createdAt: 'desc' },
-      take: Math.min(take, 500),
       include: {
         user: { select: { name: true } },
         company: { select: { name: true } },

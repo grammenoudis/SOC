@@ -195,9 +195,7 @@ async function main() {
 
   // ── Companies ─────────────────────────────────────────────────────────────
   const companySpecs = [
-    { name: 'TechVault Inc.',       contact: 'security@techvault.io' },
-    { name: 'MedSecure Healthcare', contact: 'it@medsecure.com'      },
-    { name: 'FinGuard Capital',     contact: 'soc@finguard.com'      },
+    { name: 'Testing Facility',     contact: 'admin@testfacility.local' },
   ];
   const createdCompanies = [];
   for (const c of companySpecs) {
@@ -215,16 +213,12 @@ async function main() {
   // ── Workspaces ────────────────────────────────────────────────────────────
   // LOGGER_DEFAULT_WORKSPACE_ID is pinned so docker-compose logger can target it
   // on every fresh install without needing manual configuration.
-  const LOGGER_DEFAULT_WORKSPACE_ID = 'ws-techvault-prod-aws-001';
+  const LOGGER_DEFAULT_WORKSPACE_ID = 'ws-testing-facility-001';
 
   const workspaceSpecs = [
-    { id: LOGGER_DEFAULT_WORKSPACE_ID, companyIdx: 0, name: 'Production AWS',  description: 'Main production environment on AWS',         autoResponseEnabled: true  },
-    { id: undefined,                   companyIdx: 0, name: 'Office Network',   description: 'Corporate office LAN and WiFi',              autoResponseEnabled: false },
-    { id: undefined,                   companyIdx: 0, name: 'Dev/Staging',      description: 'Development and staging environments',       autoResponseEnabled: false },
-    { id: undefined,                   companyIdx: 1, name: 'Hospital Network', description: 'Main hospital campus network',               autoResponseEnabled: true  },
-    { id: undefined,                   companyIdx: 1, name: 'Patient Portal',   description: 'Public-facing patient portal infrastructure',autoResponseEnabled: false },
-    { id: undefined,                   companyIdx: 2, name: 'Trading Floor',    description: 'High-frequency trading network',             autoResponseEnabled: true  },
-    { id: undefined,                   companyIdx: 2, name: 'Corporate VPN',    description: 'Remote access VPN infrastructure',           autoResponseEnabled: false },
+    { id: LOGGER_DEFAULT_WORKSPACE_ID, companyIdx: 0, name: 'Lab Network',     description: 'GNS3 lab environment with FortiGate, switches, and endpoints', autoResponseEnabled: false },
+    { id: undefined,                   companyIdx: 0, name: 'DMZ',             description: 'Demilitarized zone for external-facing services',              autoResponseEnabled: false },
+    { id: undefined,                   companyIdx: 0, name: 'Internal LAN',    description: 'Internal corporate LAN segment',                              autoResponseEnabled: false },
   ];
   const createdWorkspaces = [];
   for (const ws of workspaceSpecs) {
@@ -235,7 +229,18 @@ async function main() {
       console.log(`Workspace "${ws.name}" already exists`);
     } else {
       const created = await prisma.workspace.create({
-        data: { ...(ws.id ? { id: ws.id } : {}), companyId, name: ws.name, description: ws.description, autoResponseEnabled: ws.autoResponseEnabled },
+        data: {
+          ...(ws.id ? { id: ws.id } : {}),
+          companyId,
+          name: ws.name,
+          description: ws.description,
+          autoResponseEnabled: ws.autoResponseEnabled,
+          deviceDescription: 'FortiGate vSphere VM',
+          deviceHost: '192.168.1.100',
+          devicePort: 22,
+          deviceUser: 'admin',
+          devicePassword: 'Hackathon2026!',
+        },
       });
       createdWorkspaces.push(created);
       console.log(`Workspace "${ws.name}" created`);
@@ -244,7 +249,7 @@ async function main() {
 
   // ── Logs ──────────────────────────────────────────────────────────────────
   const now = Math.floor(Date.now() / 1000);
-  const logCounts = [180, 130, 90, 220, 70, 200, 100];
+  const logCounts = [300, 150, 120];
 
   for (let i = 0; i < createdWorkspaces.length; i++) {
     const ws = createdWorkspaces[i];
